@@ -27,6 +27,10 @@ struct ColibarApp: App {
 final class BrandMark: ObservableObject {
     static let shared = BrandMark()
     @Published private(set) var templateImage: NSImage?
+    /// Red-tinted, non-template variant: template images are forced to
+    /// monochrome by the menu bar, so the "needs attention" state ships its
+    /// own color baked in.
+    @Published private(set) var warningImage: NSImage?
 
     private init() {
         Task.detached(priority: .utility) {
@@ -36,7 +40,20 @@ final class BrandMark: ObservableObject {
             else { return }
             image.isTemplate = true
             image.size = NSSize(width: 18, height: 18)
-            await MainActor.run { BrandMark.shared.templateImage = image }
+
+            let red = NSImage(size: image.size, flipped: false) { rect in
+                image.draw(in: rect)
+                NSColor.systemRed.set()
+                rect.fill(using: .sourceAtop)
+                return true
+            }
+            red.isTemplate = false
+            red.size = image.size
+
+            await MainActor.run {
+                BrandMark.shared.templateImage = image
+                BrandMark.shared.warningImage = red
+            }
         }
     }
 }
@@ -49,12 +66,17 @@ struct MenuBarLabel: View {
 
     var body: some View {
         // MenuBarExtra labels only render Image/Text; layout is handled by
-        // the system, so keep this dumb. The mark always stays; a triangle
-        // joins it when something needs attention.
-        markImage
-            .opacity(summary.anyInstanceRunning || summary.runningContainers > 0 ? 1 : 0.5)
+        // the system, so keep this dumb. The mark turns red when anything
+        // needs attention — unmissable on light and dark menu bars alike.
         if summary.hasProblems {
-            Image(systemName: "exclamationmark.triangle.fill")
+            if let warning = brand.warningImage {
+                Image(nsImage: warning)
+            } else {
+                Image(systemName: "exclamationmark.triangle.fill")
+            }
+        } else {
+            markImage
+                .opacity(summary.anyInstanceRunning || summary.runningContainers > 0 ? 1 : 0.5)
         }
         if summary.runningContainers > 0 {
             Text("\(summary.runningContainers)")

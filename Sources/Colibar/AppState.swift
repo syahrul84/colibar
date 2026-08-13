@@ -156,7 +156,9 @@ final class AppState: ObservableObject {
         MenuBarSummary(
             anyInstanceRunning: instances.contains(where: \.isRunning),
             runningContainers: groups.reduce(0) { $0 + $1.runningCount },
+            // Disk warnings count too — everything the Attention card shows.
             hasProblems: groups.contains { $0.containers.contains(where: \.hasProblem) }
+                || !diskWarnings.isEmpty
         )
     }
 
