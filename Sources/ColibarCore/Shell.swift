@@ -45,6 +45,10 @@ public final class Shell: @unchecked Sendable {
 
     private let cacheLock = NSLock()
     private var pathCache: [String: String] = [:]
+    /// Binaries already searched for and not found. Cached so a poll loop
+    /// with colima/docker missing doesn't spawn a login shell every tick —
+    /// the settings "Re-scan" (clearPathCache) is the way to look again.
+    private var missCache: Set<String> = []
 
     public init() {}
 
@@ -56,6 +60,10 @@ public final class Shell: @unchecked Sendable {
         if let cached = pathCache[binary] {
             cacheLock.unlock()
             return cached
+        }
+        if missCache.contains(binary) {
+            cacheLock.unlock()
+            return nil
         }
         cacheLock.unlock()
 
@@ -71,18 +79,22 @@ public final class Shell: @unchecked Sendable {
         if found == nil {
             found = loginShellLookup(binary)
         }
+        cacheLock.lock()
         if let found {
-            cacheLock.lock()
             pathCache[binary] = found
-            cacheLock.unlock()
+        } else {
+            missCache.insert(binary)
         }
+        cacheLock.unlock()
         return found
     }
 
-    /// Forget every cached path so the next `resolve` searches from scratch.
+    /// Forget every cached path (hits and misses) so the next `resolve`
+    /// searches from scratch.
     public func clearPathCache() {
         cacheLock.lock()
         pathCache.removeAll()
+        missCache.removeAll()
         cacheLock.unlock()
     }
 

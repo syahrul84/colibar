@@ -208,6 +208,11 @@ struct PanelView: View {
                     systemImage: "moon.zzz",
                     text: "Colima is stopped. Start an instance to see containers."
                 )
+            } else if !appState.dockerInstalled {
+                EmptyHint(
+                    systemImage: "questionmark.folder",
+                    text: "The docker CLI is missing. Install it with: brew install docker — then Re-scan in Settings."
+                )
             } else if appState.dockerUnreachable {
                 EmptyHint(
                     systemImage: "bolt.horizontal.circle",

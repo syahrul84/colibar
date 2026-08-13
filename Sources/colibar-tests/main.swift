@@ -223,6 +223,19 @@ suite("proxy header injection") {
     expect(tunneled.contains("X-Forwarded-Proto: http"), "proto still announced")
 }
 
+suite("shell path resolution") {
+    let shell = Shell()
+    expectEqual(shell.resolve("definitely-not-a-real-binary-xyz"), nil, "missing binary resolves nil")
+    // The miss must be cached: a repeat lookup may not fall through to the
+    // login-shell probe (which costs hundreds of ms every poll otherwise).
+    let start = Date()
+    _ = shell.resolve("definitely-not-a-real-binary-xyz")
+    let elapsed = Date().timeIntervalSince(start)
+    expect(elapsed < 0.05, "second lookup served from miss cache (\(Int(elapsed * 1000))ms)")
+    shell.clearPathCache()
+    expectEqual(shell.resolve("ls"), "/bin/ls", "standard binary found by directory probe")
+}
+
 // MARK: - Summary
 
 print("")

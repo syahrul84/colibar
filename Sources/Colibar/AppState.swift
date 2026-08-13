@@ -24,6 +24,9 @@ final class AppState: ObservableObject {
     @Published var instances: [ColimaInstance] = []
     @Published var groups: [ContainerGroup] = []
     @Published var colimaInstalled = true
+    /// False when the docker CLI itself is missing (separate brew formula
+    /// from colima) — needs an install hint, not a "retrying" message.
+    @Published var dockerInstalled = true
     @Published var dockerUnreachable = false
     @Published var lastError: String?
     @Published var hasLoadedOnce = false
@@ -279,10 +282,14 @@ final class AppState: ObservableObject {
 
         if let error = outcome.containerError {
             switch error {
-            case ColimaServiceError.dockerUnreachable,
-                 ColimaServiceError.dockerNotInstalled:
+            case ColimaServiceError.dockerNotInstalled:
+                dockerInstalled = false
+                dockerUnreachable = true
+                groups = []
+            case ColimaServiceError.dockerUnreachable:
                 // Expected whenever the VM is stopped or still booting; show
                 // an empty container list rather than an error banner.
+                dockerInstalled = true
                 dockerUnreachable = true
                 groups = []
             default:
@@ -292,6 +299,7 @@ final class AppState: ObservableObject {
             }
             statsByID = [:]
         } else {
+            dockerInstalled = true
             dockerUnreachable = false
             groups = ContainerGroup.group(outcome.containers)
             refreshStats(for: outcome.containers)
@@ -903,6 +911,7 @@ final class AppState: ObservableObject {
     func rescanBinaries() {
         service.rescanBinaries()
         colimaInstalled = true
+        dockerInstalled = true
         lastError = nil
         refreshNow()
     }
