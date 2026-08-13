@@ -23,12 +23,21 @@ Colima is CLI-only by design. Colibar puts start/stop, live status, usage stats,
 ## Build & install
 
 ```bash
-./build-app.sh install
+./build-app.sh install   # build + install to /Applications
+./build-app.sh run       # build + install + relaunch (dev loop)
 ```
 
-Builds with SwiftPM (release), assembles `Colibar.app`, ad-hoc signs it, and installs to `/Applications`. Omit `install` to just build locally.
+Builds with SwiftPM (release), assembles `Colibar.app`, ad-hoc signs it, and installs to `/Applications`. Omit the argument to just build locally.
 
-> Run the app from `/Applications`, not from a working directory under `~/Documents` — macOS TCC re-assesses rebuilt bundles there, which can stall launches.
+> Run the app from `/Applications`, not from a working directory under `~/Documents` — macOS TCC re-assesses rebuilt bundles there, which can stall launches. `run` launches by exec'ing the binary directly because `open` routes through LaunchServices, where Gatekeeper re-assesses every freshly ad-hoc-signed build (sometimes stalling for minutes). Developer ID + notarization is the real fix if this ever ships.
+
+## Tests
+
+```bash
+swift run colibar-tests
+```
+
+The parser suite is a plain executable (Command Line Tools ship neither XCTest nor Swift Testing). Fixtures are real captured colima/docker outputs; if a future release changes its format, these fail before the menu bar does.
 
 ## Architecture
 

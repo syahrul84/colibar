@@ -96,6 +96,9 @@ struct ContainerRow: View {
                 }
             }
             Divider()
+            if let connection = container.connectionURL {
+                Button("Copy Connection URL") { appState.copyToClipboard(connection) }
+            }
             Button("Copy ID") { appState.copyToClipboard(container.shortID) }
             Button("Copy Name") { appState.copyToClipboard(container.name) }
         }

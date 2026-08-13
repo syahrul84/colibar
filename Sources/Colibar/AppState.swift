@@ -845,6 +845,19 @@ final class AppState: ObservableObject {
         terminalAction { try $0.openProjectLogsInTerminal(workingDir: dir) }
     }
 
+    /// VS Code, if installed — resolved once per launch.
+    static let vsCodeURL: URL? =
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.microsoft.VSCode")
+
+    func openProjectInEditor(_ group: ContainerGroup) {
+        guard let dir = group.workingDir, let editor = Self.vsCodeURL else { return }
+        NSWorkspace.shared.open(
+            [URL(fileURLWithPath: dir, isDirectory: true)],
+            withApplicationAt: editor,
+            configuration: NSWorkspace.OpenConfiguration()
+        )
+    }
+
     func openInBrowser(_ container: DockerContainer, port: Int) {
         guard let url = webURL(for: container, port: port) else { return }
         NSWorkspace.shared.open(url)

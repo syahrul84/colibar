@@ -203,7 +203,7 @@ public final class ReverseProxy: @unchecked Sendable {
     /// without parsing bodies. Browsers just open parallel connections, and
     /// on loopback the keep-alive loss is unmeasurable. Websocket upgrades
     /// keep their Connection header and tunnel untouched.
-    static func injectForwardHeaders(_ head: String, tls: Bool, host: String) -> String {
+    public static func injectForwardHeaders(_ head: String, tls: Bool, host: String) -> String {
         var lines = head.components(separatedBy: "\r\n")
         while lines.last?.isEmpty == true { lines.removeLast() }
         guard !lines.isEmpty else { return head }
@@ -227,7 +227,7 @@ public final class ReverseProxy: @unchecked Sendable {
         return kept.joined(separator: "\r\n") + "\r\n\r\n"
     }
 
-    static func hostHeader(in head: String) -> String? {
+    public static func hostHeader(in head: String) -> String? {
         for line in head.components(separatedBy: "\r\n").dropFirst() {
             guard let colon = line.firstIndex(of: ":") else { continue }
             let name = line[..<colon].trimmingCharacters(in: .whitespaces).lowercased()

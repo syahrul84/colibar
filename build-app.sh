@@ -31,9 +31,22 @@ echo "==> done: $PWD/$APP_BUNDLE"
 # ./build-app.sh install — also install to /Applications. Running the app
 # from inside ~/Documents makes macOS TCC re-assess the bundle on every
 # rebuild, which can wedge file access at launch; /Applications avoids that.
-if [ "${1:-}" = "install" ]; then
+#
+# ./build-app.sh run — install AND launch by exec'ing the binary directly.
+# `open` routes through LaunchServices, and Gatekeeper re-assesses every
+# freshly ad-hoc-signed build — which can stall the launch for minutes.
+# Direct exec skips that path entirely; use this for the dev loop.
+# (A paid-program Developer ID + notarization is the real fix if this app
+# is ever distributed.)
+if [ "${1:-}" = "install" ] || [ "${1:-}" = "run" ]; then
   echo "==> installing to /Applications/$APP_BUNDLE"
   rm -rf "/Applications/$APP_BUNDLE"
   ditto "$APP_BUNDLE" "/Applications/$APP_BUNDLE"
   echo "==> installed"
+fi
+if [ "${1:-}" = "run" ]; then
+  pkill -9 -f "$APP_BUNDLE/Contents/MacOS/$APP_NAME" 2>/dev/null || true
+  sleep 0.5
+  nohup "/Applications/$APP_BUNDLE/Contents/MacOS/$APP_NAME" >/dev/null 2>&1 &
+  echo "==> launched (direct exec)"
 fi

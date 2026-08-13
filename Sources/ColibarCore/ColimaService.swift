@@ -93,7 +93,7 @@ public struct ColimaService: Sendable {
         let runtime: String?
     }
 
-    static func parseInstancesJSON(_ output: String) -> [ColimaInstance] {
+    public static func parseInstancesJSON(_ output: String) -> [ColimaInstance] {
         let decoder = JSONDecoder()
         return output.split(separator: "\n").compactMap { line in
             guard
@@ -115,7 +115,7 @@ public struct ColimaService: Sendable {
 
     /// Fallback for colima builds without --json. Table shape:
     /// PROFILE  STATUS  ARCH  CPUS  MEMORY  DISK  RUNTIME  ADDRESS
-    static func parseInstancesTable(_ output: String) -> [ColimaInstance] {
+    public static func parseInstancesTable(_ output: String) -> [ColimaInstance] {
         let lines = output.split(separator: "\n").map(String.init)
         guard let header = lines.first, header.uppercased().contains("PROFILE") else { return [] }
         return lines.dropFirst().compactMap { line in
@@ -231,7 +231,7 @@ public struct ColimaService: Sendable {
         let HealthStatus: String?
     }
 
-    static func parseContainersJSON(_ output: String) -> [DockerContainer] {
+    public static func parseContainersJSON(_ output: String) -> [DockerContainer] {
         let decoder = JSONDecoder()
         return output.split(separator: "\n").compactMap { line in
             guard
@@ -292,7 +292,7 @@ public struct ColimaService: Sendable {
         let PIDs: String?
     }
 
-    static func parseStatsJSON(_ output: String) -> [ContainerStats] {
+    public static func parseStatsJSON(_ output: String) -> [ContainerStats] {
         let decoder = JSONDecoder()
         return output.split(separator: "\n").compactMap { line in
             guard
@@ -385,7 +385,7 @@ public struct ColimaService: Sendable {
     }
 
     /// "Total reclaimed space: 21.53GB" → "21.53GB"
-    static func parseReclaimed(_ output: String) -> String? {
+    public static func parseReclaimed(_ output: String) -> String? {
         for line in output.split(separator: "\n").reversed() {
             guard let range = line.range(of: "reclaimed space:") else { continue }
             let value = line[range.upperBound...].trimmingCharacters(in: .whitespaces)
@@ -415,7 +415,7 @@ public struct ColimaService: Sendable {
     /// (or under /var/lib/docker on older layouts), with / as last resort.
     static let dataMountCandidates = ["/mnt/lima-colima", "/var/lib/docker", "/"]
 
-    static func parseDiskUsePercent(_ output: String) -> Int? {
+    public static func parseDiskUsePercent(_ output: String) -> Int? {
         var byMount: [String: Int] = [:]
         for line in output.split(separator: "\n").dropFirst() {
             let columns = line.split(separator: " ", omittingEmptySubsequences: true)

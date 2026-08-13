@@ -100,6 +100,24 @@ public struct DockerContainer: Identifiable, Equatable, Sendable {
     /// Anything a user should worry about: failing healthcheck, restart loop, dead.
     public var hasProblem: Bool { isUnhealthy || state == "restarting" || state == "dead" }
 
+    /// Connection URL for well-known database/cache images, built from the
+    /// first published port — for pasting into TablePlus and friends.
+    public var connectionURL: String? {
+        guard let port = hostPorts.first else { return nil }
+        let haystack = "\(image.lowercased()) \(composeService?.lowercased() ?? name.lowercased())"
+        let schemes: [(needle: String, scheme: String)] = [
+            ("postgres", "postgresql"), ("pgsql", "postgresql"),
+            ("mysql", "mysql"), ("mariadb", "mysql"),
+            ("redis", "redis"), ("valkey", "redis"),
+            ("mongo", "mongodb"),
+            ("memcached", "memcached"),
+        ]
+        for (needle, scheme) in schemes where haystack.contains(needle) {
+            return "\(scheme)://localhost:\(port)"
+        }
+        return nil
+    }
+
     /// Human phrasing of hasProblem, for the panel's attention list.
     public var problemReason: String? {
         if state == "restarting" { return "Restart looping" }

@@ -20,5 +20,12 @@ let package = Package(
             dependencies: ["ColibarCore"],
             path: "Sources/colibar-cli"
         ),
+        // Parser test suite as a plain executable: Command Line Tools ship
+        // neither XCTest nor Swift Testing. Run with `swift run colibar-tests`.
+        .executableTarget(
+            name: "colibar-tests",
+            dependencies: ["ColibarCore"],
+            path: "Sources/colibar-tests"
+        ),
     ]
 )

@@ -88,6 +88,9 @@ struct GroupCard: View {
                 Divider()
                 Button("View Project Logs") { appState.openProjectLogs(group) }
                 Button("Open Terminal at Project") { appState.openProjectTerminal(group) }
+                if AppState.vsCodeURL != nil {
+                    Button("Open in VS Code") { appState.openProjectInEditor(group) }
+                }
             }
         }
     }
