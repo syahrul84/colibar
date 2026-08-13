@@ -350,6 +350,50 @@ public struct ColimaService: Sendable {
         }
     }
 
+    // MARK: - Disk cleanup
+
+    /// Reclaim space from unused images and build cache. Deliberately NOT
+    /// `docker system prune`: that deletes stopped containers, and stopped is
+    /// a normal state for compose projects here. Containers, volumes, and
+    /// networks are never touched. Returns a human summary like
+    /// "Reclaimed 12.4GB (images) · 3.1GB (build cache)".
+    public func pruneUnusedImages() throws -> String {
+        var parts: [String] = []
+        for (label, arguments) in [
+            ("images", ["image", "prune", "-a", "-f"]),
+            ("build cache", ["builder", "prune", "-a", "-f"]),
+        ] {
+            let result: ShellResult
+            do {
+                result = try shell.run("docker", arguments, timeout: 600)
+            } catch ShellError.binaryNotFound {
+                throw ColimaServiceError.dockerNotInstalled
+            }
+            if result.timedOut { throw ColimaServiceError.commandTimedOut(command: "docker \(arguments[0]) prune") }
+            guard result.succeeded else {
+                let message = pickMessage(result)
+                if Self.looksLikeDaemonUnreachable(message) {
+                    throw ColimaServiceError.dockerUnreachable(message)
+                }
+                throw ColimaServiceError.commandFailed(command: "docker \(arguments[0]) prune", message: message)
+            }
+            if let reclaimed = Self.parseReclaimed(result.stdout + result.stderr) {
+                parts.append("\(reclaimed) (\(label))")
+            }
+        }
+        return parts.isEmpty ? "Nothing to reclaim" : "Reclaimed " + parts.joined(separator: " · ")
+    }
+
+    /// "Total reclaimed space: 21.53GB" → "21.53GB"
+    static func parseReclaimed(_ output: String) -> String? {
+        for line in output.split(separator: "\n").reversed() {
+            guard let range = line.range(of: "reclaimed space:") else { continue }
+            let value = line[range.upperBound...].trimmingCharacters(in: .whitespaces)
+            if !value.isEmpty, !value.hasPrefix("0B") { return value }
+        }
+        return nil
+    }
+
     // MARK: - VM disk usage
 
     /// Percent used of the VM disk that actually holds docker's images and

@@ -55,6 +55,11 @@ final class AppState: ObservableObject {
     private var lastDiskCheck = Date.distantPast
     private var diskTask: Task<Void, Never>?
 
+    @Published var pruning = false
+    /// Transient success feedback (e.g. prune results), shown in the panel
+    /// footer and cleared automatically.
+    @Published var statusMessage: String?
+
     var diskWarnings: [(instance: String, percent: Int)] {
         diskUsage
             .filter { $0.value >= Self.diskWarningThreshold }
@@ -596,6 +601,41 @@ final class AppState: ObservableObject {
     /// workload is doing right now.
     var overallUsage: UsageSummary? {
         usageSummary(for: groups.flatMap(\.containers))
+    }
+
+    /// One-click disk cleanup: unused images + build cache only. Pauses
+    /// polling while it runs (it can take a minute on a full disk), then
+    /// re-measures the disk immediately so the warning updates.
+    func pruneDisk() {
+        guard !pruning else { return }
+        pruning = true
+        actionsInFlight += 1
+        let service = self.service
+        Task { [weak self] in
+            var summary: String?
+            var failure: String?
+            do {
+                summary = try await Task.detached(priority: .userInitiated) {
+                    try service.pruneUnusedImages()
+                }.value
+            } catch {
+                failure = error.localizedDescription
+            }
+            guard let self else { return }
+            self.pruning = false
+            self.actionsInFlight -= 1
+            if let failure {
+                self.lastError = failure
+            } else if let summary {
+                self.statusMessage = summary
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(10))
+                    self?.statusMessage = nil
+                }
+            }
+            self.lastDiskCheck = .distantPast // re-measure right away
+            self.refreshNow()
+        }
     }
 
     /// Check VM disk fill occasionally while someone's looking.

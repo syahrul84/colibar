@@ -124,6 +124,19 @@ struct PanelView: View {
                 }
                 .padding(12)
             }
+            if let status = appState.statusMessage {
+                Divider()
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Text(status)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
             if let error = appState.lastError {
                 Divider()
                 ErrorBanner(message: error)

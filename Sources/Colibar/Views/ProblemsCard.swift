@@ -20,18 +20,7 @@ struct ProblemsCard: View {
                     .padding(.horizontal, 8)
                     .padding(.top, 8)
                 ForEach(appState.diskWarnings, id: \.instance) { warning in
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: "internaldrive")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                            .padding(.top, 2)
-                        Text("VM disk \(warning.percent)% full (\(warning.instance)) — old images and volumes eat this quietly. Reclaim with `docker system prune` in a terminal.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 2)
+                    DiskWarningRow(warning: warning)
                 }
                 ForEach(problems) { container in
                     ProblemRow(container: container)
@@ -40,6 +29,57 @@ struct ProblemsCard: View {
             .padding(.bottom, 6)
             .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
         }
+    }
+}
+
+/// Disk-full warning with one-click cleanup. First click asks inline; the
+/// prune removes unused images and build cache only — never containers,
+/// volumes, or networks.
+private struct DiskWarningRow: View {
+    @EnvironmentObject private var appState: AppState
+    let warning: (instance: String, percent: Int)
+    @State private var confirming = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "internaldrive")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .padding(.top, 2)
+                Text("VM disk \(warning.percent)% full (\(warning.instance)) — unused images and build cache pile up quietly.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                if appState.pruning {
+                    ProgressView()
+                        .controlSize(.small)
+                } else if !confirming {
+                    Button("Reclaim Space…") { confirming = true }
+                        .controlSize(.small)
+                }
+            }
+            if confirming, !appState.pruning {
+                HStack(spacing: 8) {
+                    Text("Remove images and build cache no container uses? Containers and volumes are untouched.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Button("Cancel") { confirming = false }
+                        .controlSize(.small)
+                    Button("Prune") {
+                        confirming = false
+                        appState.pruneDisk()
+                    }
+                    .controlSize(.small)
+                    .keyboardShortcut(.defaultAction)
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 2)
     }
 }
 
