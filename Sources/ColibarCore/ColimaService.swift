@@ -350,6 +350,85 @@ public struct ColimaService: Sendable {
         }
     }
 
+    // MARK: - Runtime version probing
+
+    /// Ask a running container what runtime versions it carries, e.g.
+    /// "php 8.3.7 · composer 2.7.6 · node 20.11.1 · npm 10.2.4".
+    ///
+    /// One `docker exec` per binary (~100ms each), so callers cache results
+    /// by container ID — IDs change on recreation, which invalidates the
+    /// cache exactly when versions could have changed. Missing binaries and
+    /// shell-less images fail quietly.
+    public func probeVersions(containerID: String, image: String, service: String?) -> String? {
+        let haystack = "\(image) \(service ?? "")".lowercased()
+
+        func exec(_ arguments: [String]) -> String? {
+            guard
+                let result = try? shell.run(
+                    "docker",
+                    ["exec", String(containerID.prefix(12))] + arguments,
+                    timeout: 10
+                ),
+                result.succeeded
+            else { return nil }
+            let output = result.stdout.isEmpty ? result.stderr : result.stdout
+            return output.split(separator: "\n").first.map(String.init)
+        }
+
+        // Databases/caches: one well-known server binary each.
+        let databaseProbes: [(needle: String, binary: String, label: String)] = [
+            ("postgres", "postgres", "postgres"),
+            ("pgsql", "postgres", "postgres"),
+            ("mariadb", "mariadbd", "mariadb"),
+            ("mysql", "mysqld", "mysql"),
+            ("redis", "redis-server", "redis"),
+            ("valkey", "valkey-server", "valkey"),
+            ("mongo", "mongod", "mongo"),
+        ]
+        for probe in databaseProbes where haystack.contains(probe.needle) {
+            guard
+                let line = exec([probe.binary, "--version"]),
+                let version = Self.versionToken(in: line)
+            else { return nil }
+            return "\(probe.label) \(version)"
+        }
+
+        // Everything else: try the common app runtimes. Sail/PHP images often
+        // carry node+npm too, so probe all and report what answers.
+        var found: [String] = []
+        if let line = exec(["php", "-v"]), let version = Self.versionToken(in: line) {
+            found.append("php \(version)")
+            if let composer = exec(["composer", "--version"]),
+               let composerVersion = Self.versionToken(in: composer) {
+                found.append("composer \(composerVersion)")
+            }
+        }
+        if let line = exec(["node", "--version"]), let version = Self.versionToken(in: line) {
+            found.append("node \(version)")
+            if let npm = exec(["npm", "--version"]), let npmVersion = Self.versionToken(in: npm) {
+                found.append("npm \(npmVersion)")
+            }
+        }
+        if found.isEmpty, let line = exec(["python3", "--version"]),
+           let version = Self.versionToken(in: line) {
+            found.append("python \(version)")
+        }
+        return found.isEmpty ? nil : found.joined(separator: " · ")
+    }
+
+    /// First token that reads like a version number:
+    /// "PHP 8.3.7 (cli)" → "8.3.7", "v12.22.12" → "12.22.12",
+    /// "Redis server v=7.2.5 sha=..." → "7.2.5".
+    public static func versionToken(in line: String) -> String? {
+        for raw in line.split(separator: " ") {
+            let token = raw.trimmingCharacters(in: CharacterSet(charactersIn: "vV=(),"))
+            if let first = token.first, first.isNumber {
+                return token
+            }
+        }
+        return nil
+    }
+
     // MARK: - Disk cleanup
 
     /// Reclaim space from unused images and build cache. Deliberately NOT

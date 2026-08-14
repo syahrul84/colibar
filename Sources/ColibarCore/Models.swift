@@ -118,6 +118,18 @@ public struct DockerContainer: Identifiable, Equatable, Sendable {
         return nil
     }
 
+    /// Version hint from the image tag alone: "node:12" → "node 12",
+    /// "postgres:16.3-alpine" → "postgres 16.3". Nil for non-numeric tags
+    /// like custom builds ("imt-backend:irems") — exec probes cover those.
+    public var tagVersion: String? {
+        guard let colon = image.lastIndex(of: ":") else { return nil }
+        let tag = image[image.index(after: colon)...]
+        guard let first = tag.first, first.isNumber, !tag.contains("/") else { return nil }
+        guard let name = image[..<colon].split(separator: "/").last else { return nil }
+        let version = tag.split(separator: "-").first.map(String.init) ?? String(tag)
+        return "\(name) \(version)"
+    }
+
     /// Human phrasing of hasProblem, for the panel's attention list.
     public var problemReason: String? {
         if state == "restarting" { return "Restart looping" }

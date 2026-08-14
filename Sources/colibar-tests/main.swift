@@ -246,6 +246,29 @@ suite("proxy header injection") {
     expect(tunneled.contains("X-Forwarded-Proto: http"), "proto still announced")
 }
 
+suite("runtime version parsing") {
+    expectEqual(ColimaService.versionToken(in: "PHP 8.3.7 (cli) (built: May  8 2024)"), "8.3.7", "php -v line")
+    expectEqual(ColimaService.versionToken(in: "v12.22.12"), "12.22.12", "node v-prefix stripped")
+    expectEqual(ColimaService.versionToken(in: "10.2.4"), "10.2.4", "npm bare number")
+    expectEqual(ColimaService.versionToken(in: "Composer version 2.7.6 2024-05-04"), "2.7.6", "composer line")
+    expectEqual(ColimaService.versionToken(in: "Redis server v=7.2.5 sha=00000000"), "7.2.5", "redis v= form")
+    expectEqual(ColimaService.versionToken(in: "/usr/sbin/mysqld  Ver 8.0.36 for Linux"), "8.0.36", "mysqld line")
+    expectEqual(ColimaService.versionToken(in: "no digits here"), nil, "no version present")
+
+    expectEqual(makeContainer("n", ports: []).tagVersion, nil, "empty image")
+    func img(_ image: String) -> DockerContainer {
+        DockerContainer(
+            id: "x", name: "x", image: image, state: "running", status: "",
+            hostPorts: [], sizeRaw: nil, health: nil, composeProject: nil,
+            composeService: nil, composeWorkingDir: nil
+        )
+    }
+    expectEqual(img("node:12").tagVersion, "node 12", "simple tag")
+    expectEqual(img("postgres:16.3-alpine").tagVersion, "postgres 16.3", "suffix stripped")
+    expectEqual(img("imt-backend:irems").tagVersion, nil, "non-numeric tag ignored")
+    expectEqual(img("ghcr.io/org/app:2.1").tagVersion, "app 2.1", "registry path uses basename")
+}
+
 suite("shell path resolution") {
     let shell = Shell()
     expectEqual(shell.resolve("definitely-not-a-real-binary-xyz"), nil, "missing binary resolves nil")

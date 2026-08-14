@@ -71,6 +71,22 @@ if arguments.count >= 3, arguments[0] == "domains-test",
     }
 }
 
+// Probe runtime versions of every running container (dev verification).
+if arguments.count == 1, arguments[0] == "probe-versions" {
+    do {
+        for container in try service.listContainers() where container.isRunning {
+            let versions = service.probeVersions(
+                containerID: container.id, image: container.image, service: container.composeService
+            )
+            print("\(container.displayName) [\(container.image)]: \(versions ?? "-")")
+        }
+        exit(0)
+    } catch {
+        print("ERROR: \(error.localizedDescription)")
+        exit(1)
+    }
+}
+
 print("== Binary resolution ==")
 for binary in ["colima", "docker"] {
     print("  \(binary): \(shell.resolve(binary) ?? "NOT FOUND")")

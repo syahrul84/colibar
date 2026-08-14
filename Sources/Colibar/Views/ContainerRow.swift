@@ -78,7 +78,7 @@ struct ContainerRow: View {
                 .padding(.horizontal, 4)
         )
         .onHover { hovering = $0 }
-        .help(container.status)
+        .help(hoverDetail)
         .contextMenu {
             Button("Restart") { appState.restartContainer(container) }
                 .disabled(isBusy)
@@ -119,10 +119,28 @@ struct ContainerRow: View {
 
     /// "Up 4 days (healthy)" / "Exited (255) 4 days ago" — docker's own words,
     /// so running vs stopped is spelled out rather than implied by a dot.
+    /// The primary runtime version rides along; the full probed list (npm,
+    /// composer, …) lives in the hover tooltip to keep rows compact.
     private var subtitle: String {
         var parts: [String] = [container.status.isEmpty ? container.state : container.status]
         if let size = container.displaySize { parts.append(size) }
+        if let version = primaryVersion { parts.append(version) }
         return parts.joined(separator: " · ")
+    }
+
+    /// Probed truth first, image-tag hint as immediate fallback.
+    private var primaryVersion: String? {
+        if let probed = appState.versionsByID[container.id] {
+            return probed.components(separatedBy: " · ").first
+        }
+        return container.tagVersion
+    }
+
+    private var hoverDetail: String {
+        if let probed = appState.versionsByID[container.id] {
+            return "\(container.status)\n\(probed)"
+        }
+        return container.status
     }
 
     private var usageLine: String? {

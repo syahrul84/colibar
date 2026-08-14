@@ -58,6 +58,12 @@ final class AppState: ObservableObject {
     private var lastDiskCheck = Date.distantPast
     private var diskTask: Task<Void, Never>?
 
+    /// Probed runtime versions per container ID ("php 8.3.7 · node 20.1").
+    /// Filled lazily by one-time exec probes; IDs never probed twice.
+    @Published var versionsByID: [String: String] = [:]
+    private var probedIDs: Set<String> = []
+    private var versionsTask: Task<Void, Never>?
+
     @Published var pruning = false
     /// Transient success feedback (e.g. prune results), shown in the panel
     /// footer and cleared automatically.
@@ -304,6 +310,7 @@ final class AppState: ObservableObject {
             groups = ContainerGroup.group(outcome.containers)
             refreshStats(for: outcome.containers)
             refreshDiskUsage()
+            refreshVersions(for: outcome.containers)
             notifyUnexpectedTransitions(outcome.containers)
             previousContainers = Dictionary(outcome.containers.map { ($0.id, $0) }) { first, _ in first }
         }
@@ -645,6 +652,34 @@ final class AppState: ObservableObject {
             }
             self.lastDiskCheck = .distantPast // re-measure right away
             self.refreshNow()
+        }
+    }
+
+    /// Probe runtime versions for running containers not yet asked, one
+    /// container at a time in the background. Only while the panel is open.
+    private func refreshVersions(for containers: [DockerContainer]) {
+        guard panelVisible, versionsTask == nil else { return }
+        let pending = containers.filter { $0.isRunning && !probedIDs.contains($0.id) }
+        guard !pending.isEmpty else { return }
+        pending.forEach { probedIDs.insert($0.id) }
+        let batch = pending.map { (id: $0.id, image: $0.image, service: $0.composeService) }
+        let service = self.service
+        versionsTask = Task { [weak self] in
+            let results = await Task.detached(priority: .utility) { () -> [String: String] in
+                var found: [String: String] = [:]
+                for item in batch {
+                    if let versions = service.probeVersions(
+                        containerID: item.id, image: item.image, service: item.service
+                    ) {
+                        found[item.id] = versions
+                    }
+                }
+                return found
+            }.value
+            guard let self else { return }
+            appLog.notice("version probes: \(batch.count) containers, \(results.count) answered")
+            self.versionsByID.merge(results) { _, new in new }
+            self.versionsTask = nil
         }
     }
 
