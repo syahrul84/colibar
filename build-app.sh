@@ -50,3 +50,13 @@ if [ "${1:-}" = "run" ]; then
   nohup "/Applications/$APP_BUNDLE/Contents/MacOS/$APP_NAME" >/dev/null 2>&1 &
   echo "==> launched (direct exec)"
 fi
+
+# ./build-app.sh package — zip the bundle for a GitHub release. The in-app
+# updater downloads the release's .zip asset, so every release needs one.
+if [ "${1:-}" = "package" ]; then
+  VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP_BUNDLE/Contents/Info.plist")
+  ZIP="$APP_NAME-v$VERSION.zip"
+  rm -f "$ZIP"
+  ditto -c -k --keepParent "$APP_BUNDLE" "$ZIP"
+  echo "==> packaged: $PWD/$ZIP (attach to the v$VERSION GitHub release)"
+fi

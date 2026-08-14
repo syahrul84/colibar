@@ -269,6 +269,15 @@ suite("runtime version parsing") {
     expectEqual(img("ghcr.io/org/app:2.1").tagVersion, "app 2.1", "registry path uses basename")
 }
 
+suite("update version comparison") {
+    expect(AppUpdate.isNewer("v1.7.0", than: "1.6.2"), "v-prefixed newer")
+    expect(AppUpdate.isNewer("1.7", than: "1.6.2"), "short remote wins over longer older")
+    expect(!AppUpdate.isNewer("1.6.2", than: "1.6.2"), "equal is not newer")
+    expect(!AppUpdate.isNewer("1.6.1", than: "1.6.2"), "older is not newer")
+    expect(AppUpdate.isNewer("2.0.0", than: "1.99.99"), "major beats minor")
+    expect(!AppUpdate.isNewer("garbage", than: "1.0.0"), "unparseable never newer")
+}
+
 suite("shell path resolution") {
     let shell = Shell()
     expectEqual(shell.resolve("definitely-not-a-real-binary-xyz"), nil, "missing binary resolves nil")

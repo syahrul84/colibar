@@ -3,3 +3,4 @@
 Colibar.app/
 *.xcodeproj
 .DS_Store
+*.zip

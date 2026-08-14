@@ -110,6 +110,12 @@ final class AppState: ObservableObject {
     @Published var localDomainsEnabled: Bool {
         didSet { UserDefaults.standard.set(localDomainsEnabled, forKey: "localDomainsEnabled") }
     }
+    @Published var autoCheckUpdates: Bool {
+        didSet { UserDefaults.standard.set(autoCheckUpdates, forKey: "autoCheckUpdates") }
+    }
+
+    /// GitHub Releases updater; owns its own published state.
+    let updates = UpdateManager()
     @Published var httpsEnabled: Bool {
         didSet { UserDefaults.standard.set(httpsEnabled, forKey: "httpsEnabled") }
     }
@@ -157,7 +163,15 @@ final class AppState: ObservableObject {
            let stored = try? JSONDecoder().decode([CustomHostMapping].self, from: data) {
             customHosts = stored
         }
+        autoCheckUpdates = defaults.object(forKey: "autoCheckUpdates") as? Bool ?? true
         if notifyOnCrash { requestNotificationAuthorization() }
+        updates.onBackgroundUpdateFound = { [weak self] update in
+            self?.postNotification(
+                title: "Colibar \(update.version) is available",
+                body: "Open Settings to install the update."
+            )
+        }
+        if autoCheckUpdates { updates.autoCheckIfDue() }
         startPolling()
     }
 

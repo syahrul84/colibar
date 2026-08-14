@@ -3,7 +3,13 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
+    @ObservedObject private var updates: UpdateManager
     @Binding var isPresented: Bool
+
+    init(isPresented: Binding<Bool>, updates: UpdateManager) {
+        _isPresented = isPresented
+        self.updates = updates
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -106,7 +112,56 @@ struct SettingsView: View {
                 .controlSize(.small)
             }
 
-            HStack {
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Button(updates.checking ? "Checking…" : "Check for Updates") {
+                        updates.check(manual: true)
+                    }
+                    .controlSize(.small)
+                    .disabled(updates.checking || updates.installing)
+                    Text("v\(updates.currentVersion)")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                if let status = updates.status {
+                    Text(status)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let update = updates.available {
+                    HStack(spacing: 8) {
+                        Text("Version \(update.version) is available.")
+                            .font(.caption.weight(.medium))
+                        Button(updates.installing ? "Installing…" : "Install & Relaunch") {
+                            updates.install()
+                        }
+                        .controlSize(.small)
+                        .disabled(updates.installing)
+                    }
+                }
+                Toggle("Check for updates automatically", isOn: $appState.autoCheckUpdates)
+            }
+
+            Divider()
+
+            HStack(spacing: 10) {
+                Button {
+                    NSWorkspace.shared.open(AppLinks.kofi)
+                } label: {
+                    Label("Send a Tip", systemImage: "cup.and.saucer.fill")
+                }
+                .controlSize(.small)
+                .help("Buy me a coffee on Ko-fi")
+                Button {
+                    NSWorkspace.shared.open(AppLinks.github)
+                } label: {
+                    Label("Star on GitHub", systemImage: "star.fill")
+                }
+                .controlSize(.small)
+                .help("Star the Colibar repository")
                 Spacer()
                 Button("Done") { isPresented = false }
                     .keyboardShortcut(.defaultAction)

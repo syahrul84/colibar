@@ -49,7 +49,7 @@ struct PanelView: View {
                 }
             } else if showingSettings {
                 MeasuredScroll {
-                    SettingsView(isPresented: $showingSettings)
+                    SettingsView(isPresented: $showingSettings, updates: appState.updates)
                 }
             } else {
                 content

@@ -204,6 +204,28 @@ public struct DockerContainer: Identifiable, Equatable, Sendable {
     }
 }
 
+// MARK: - App updates
+
+public enum AppUpdate {
+    /// Semantic-ish comparison: "v1.7.0" vs "1.6.2" → true. Missing
+    /// components count as zero, so "1.7" > "1.6.2".
+    public static func isNewer(_ remote: String, than local: String) -> Bool {
+        func components(_ text: String) -> [Int] {
+            text.trimmingCharacters(in: CharacterSet(charactersIn: "vV "))
+                .split(separator: ".")
+                .map { Int($0.prefix(while: \.isNumber)) ?? 0 }
+        }
+        let remoteParts = components(remote)
+        let localParts = components(local)
+        for index in 0..<max(remoteParts.count, localParts.count) {
+            let r = index < remoteParts.count ? remoteParts[index] : 0
+            let l = index < localParts.count ? localParts[index] : 0
+            if r != l { return r > l }
+        }
+        return false
+    }
+}
+
 // MARK: - Byte sizes
 
 public enum ByteSize {
