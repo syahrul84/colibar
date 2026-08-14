@@ -5,6 +5,10 @@ import SwiftUI
 struct ColibarApp: App {
     @StateObject private var appState = AppState()
 
+    init() {
+        ScreenshotRenderer.renderIfRequested() // no-op without the CLI flag
+    }
+
     var body: some Scene {
         MenuBarExtra {
             PanelView()
