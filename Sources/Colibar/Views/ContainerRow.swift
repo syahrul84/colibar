@@ -44,28 +44,37 @@ struct ContainerRow: View {
                     Text(container.displayName)
                         .font(.callout.weight(.medium))
                         .lineLimit(1)
-                    if let port = container.hostPorts.first {
-                        PortBadge(port: port, extraCount: container.hostPorts.count - 1) {
-                            appState.openInBrowser(container, port: port)
-                        }
-                    }
-                    if appState.localDomainsEnabled, !container.hostPorts.isEmpty {
+                    // One badge only: the host once mapped, the port otherwise.
+                    if let mapping {
                         HostButton(
                             mapping: mapping,
-                            visible: hovering || mapping != nil,
-                            open: { if let mapping { appState.openMappedHost(mapping) } },
+                            visible: true,
+                            open: { appState.openMappedHost(mapping) },
                             edit: { editingHost = true },
                             remove: { appState.removeHostMapping(for: container) }
                         )
-                        .popover(isPresented: $editingHost, arrowEdge: .bottom) {
-                            HostEditorView(
-                                container: container,
-                                isPresented: $editingHost,
-                                existing: mapping
+                    } else if let port = container.hostPorts.first {
+                        PortBadge(port: port, extraCount: container.hostPorts.count - 1) {
+                            appState.openInBrowser(container, port: port)
+                        }
+                        if appState.localDomainsEnabled, hovering {
+                            HostButton(
+                                mapping: nil,
+                                visible: true,
+                                open: {},
+                                edit: { editingHost = true },
+                                remove: {}
                             )
-                            .environmentObject(appState)
                         }
                     }
+                }
+                .popover(isPresented: $editingHost, arrowEdge: .bottom) {
+                    HostEditorView(
+                        container: container,
+                        isPresented: $editingHost,
+                        existing: mapping
+                    )
+                    .environmentObject(appState)
                 }
                 Text(compactSubtitle)
                     .font(.caption)
@@ -74,6 +83,23 @@ struct ContainerRow: View {
                     .lineLimit(1)
             }
             Spacer()
+            // Actions stay out of the way until pointed at; the chevron is
+            // the row's one permanent control.
+            if isBusy {
+                ProgressView()
+                    .controlSize(.small)
+                    .padding(.top, 3)
+            } else if hovering {
+                if container.isRunning {
+                    RowActionButton(systemImage: "stop.fill", help: "Stop \(container.displayName)") {
+                        appState.stopContainer(container)
+                    }
+                } else {
+                    RowActionButton(systemImage: "play.fill", help: "Start \(container.displayName)") {
+                        appState.startContainer(container)
+                    }
+                }
+            }
             Button {
                 withAnimation(.easeInOut(duration: 0.15)) {
                     expanded.toggle()
@@ -88,24 +114,11 @@ struct ContainerRow: View {
             }
             .buttonStyle(.borderless)
             .help(expanded ? "Hide details" : "Show details")
-            if isBusy {
-                ProgressView()
-                    .controlSize(.small)
-                    .padding(.top, 3)
-            } else if container.isRunning {
-                RowActionButton(systemImage: "stop.fill", help: "Stop \(container.displayName)") {
-                    appState.stopContainer(container)
-                }
-            } else {
-                RowActionButton(systemImage: "play.fill", help: "Start \(container.displayName)") {
-                    appState.startContainer(container)
-                }
-            }
         }
     }
 
-    /// Running: processor and memory only. Stopped: docker's status line,
-    /// since there is no usage to show and the reason matters.
+    /// Running: "CPU 0.5% · RAM 2.0%". Stopped: docker's status line, since
+    /// there is no usage to show and the reason matters.
     private var compactSubtitle: String {
         guard container.isRunning else {
             return container.status.isEmpty ? container.state : container.status
@@ -113,7 +126,11 @@ struct ContainerRow: View {
         guard let stats else { return "measuring…" }
         var parts: [String] = []
         if let cpu = stats.cpuPercent { parts.append(String(format: "CPU %.1f%%", cpu)) }
-        if let mem = stats.memUsage { parts.append("MEM \(mem)") }
+        if let ram = stats.memPercent {
+            parts.append(String(format: "RAM %.1f%%", ram))
+        } else if let mem = stats.memUsage {
+            parts.append("RAM \(mem)")
+        }
         return parts.isEmpty ? "measuring…" : parts.joined(separator: " · ")
     }
 
@@ -122,6 +139,9 @@ struct ContainerRow: View {
     private var detailSection: some View {
         VStack(alignment: .leading, spacing: 3) {
             detailLine("Status", container.status.isEmpty ? container.state : container.status)
+            if container.isRunning, let stats, let mem = stats.memUsage {
+                detailLine("Memory", stats.memPercent.map { String(format: "%@ (%.1f%%)", mem, $0) } ?? mem)
+            }
             detailLine("Image", container.image)
             if let size = container.displaySize {
                 detailLine("Size", size)
