@@ -33,12 +33,13 @@ func suite(_ name: String, _ body: () -> Void) {
 }
 
 func makeContainer(
-    _ name: String, project: String? = nil, service: String? = nil, ports: [Int] = []
+    _ name: String, project: String? = nil, service: String? = nil, ports: [Int] = [],
+    workingDir: String? = nil
 ) -> DockerContainer {
     DockerContainer(
         id: name, name: name, image: "", state: "running", status: "Up",
         hostPorts: ports, sizeRaw: nil, health: nil, composeProject: project,
-        composeService: service, composeWorkingDir: nil
+        composeService: service, composeWorkingDir: workingDir
     )
 }
 
@@ -114,6 +115,28 @@ suite("compose grouping") {
     ])
     expectEqual(groups.map(\.title), ["goodbite", "verdant", "Other"], "projects alphabetical, Other last")
     expectEqual(groups.first?.containers.map(\.displayName), ["app", "db"], "services sorted within group")
+}
+
+suite("colliding project names split by directory") {
+    // Compose defaults the project name to the compose file's directory, so
+    // repo-a/docker and repo-b/docker both become project "docker".
+    let groups = ContainerGroup.group([
+        makeContainer("a-web", project: "docker", service: "web", workingDir: "/Users/x/irems-sg/docker"),
+        makeContainer("b-web", project: "docker", service: "web", workingDir: "/Users/x/other-repo/docker"),
+        makeContainer("g-app", project: "goodbite", service: "app", workingDir: "/Users/x/goodbite"),
+    ])
+    expectEqual(groups.count, 3, "same project name from two dirs = two groups")
+    expectEqual(
+        groups.map(\.title).sorted(),
+        ["docker · irems-sg", "docker · other-repo", "goodbite"],
+        "colliding groups qualified by parent folder; unique names untouched"
+    )
+    expect(Set(groups.map(\.id)).count == 3, "group identities stay distinct")
+    expectEqual(
+        ContainerGroup.directoryQualifier("/Users/x/irems-sg/docker", project: "docker"),
+        "irems-sg",
+        "qualifier skips the redundant project-name component"
+    )
 }
 
 // MARK: - Stats & disk

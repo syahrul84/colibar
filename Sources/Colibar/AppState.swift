@@ -171,7 +171,7 @@ final class AppState: ObservableObject {
             result = result.compactMap { group in
                 let running = group.containers.filter(\.isRunning)
                 guard !running.isEmpty else { return nil }
-                return ContainerGroup(project: group.project, containers: running)
+                return ContainerGroup(project: group.project, containers: running, qualifier: group.qualifier)
             }
         }
         let query = searchText.trimmingCharacters(in: .whitespaces)
@@ -184,7 +184,7 @@ final class AppState: ObservableObject {
                         || (container.composeProject?.localizedCaseInsensitiveContains(query) ?? false)
                 }
                 guard !matches.isEmpty else { return nil }
-                return ContainerGroup(project: group.project, containers: matches)
+                return ContainerGroup(project: group.project, containers: matches, qualifier: group.qualifier)
             }
         }
         return result

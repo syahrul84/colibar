@@ -272,28 +272,44 @@ public struct ContainerGroup: Identifiable, Equatable, Sendable {
     /// Compose project name; nil for containers outside any project.
     public let project: String?
     public var containers: [DockerContainer]
+    /// Set when two stacks share a project name (compose defaults the name
+    /// to the directory holding the compose file, so every repo with a
+    /// `docker/` folder collides on "docker"). Usually the parent folder.
+    public let qualifier: String?
 
-    public init(project: String?, containers: [DockerContainer]) {
+    public init(project: String?, containers: [DockerContainer], qualifier: String? = nil) {
         self.project = project
         self.containers = containers
+        self.qualifier = qualifier
     }
 
-    public var id: String { project ?? "\u{FFFF}other" }
-    public var title: String { project ?? "Other" }
+    /// Same-named projects from different directories must not share
+    /// identity (collapse state, busy tracking), hence the dir in the id.
+    public var id: String { (project ?? "\u{FFFF}other") + "|" + (workingDir ?? "") }
+    public var title: String {
+        guard let project else { return "Other" }
+        return qualifier.map { "\(project) · \($0)" } ?? project
+    }
     public var runningCount: Int { containers.filter(\.isRunning).count }
     public var isFullyRunning: Bool { runningCount == containers.count && !containers.isEmpty }
     /// The compose project directory, when docker recorded one.
     public var workingDir: String? { containers.compactMap(\.composeWorkingDir).first }
 
-    /// Group containers by compose project. Projects sort alphabetically,
-    /// the "Other" group always last; within a group, rows sort by display
-    /// name so Sail stacks read app/mysql/redis... consistently.
+    /// Group containers by compose project AND compose working directory —
+    /// docker's project label alone is ambiguous (see `qualifier`). Groups
+    /// sort by title, the "Other" group always last; within a group, rows
+    /// sort by display name so Sail stacks read app/mysql/redis consistently.
     public static func group(_ containers: [DockerContainer]) -> [ContainerGroup] {
-        var byProject: [String: [DockerContainer]] = [:]
+        struct Key: Hashable {
+            let project: String
+            let workingDir: String?
+        }
+        var byKey: [Key: [DockerContainer]] = [:]
         var loose: [DockerContainer] = []
         for container in containers {
             if let project = container.composeProject {
-                byProject[project, default: []].append(container)
+                byKey[Key(project: project, workingDir: container.composeWorkingDir), default: []]
+                    .append(container)
             } else {
                 loose.append(container)
             }
@@ -305,12 +321,34 @@ public struct ContainerGroup: Identifiable, Equatable, Sendable {
             }
         }
 
-        var groups = byProject
-            .sorted { $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedAscending }
-            .map { ContainerGroup(project: $0.key, containers: sorted($0.value)) }
+        var nameCounts: [String: Int] = [:]
+        for key in byKey.keys { nameCounts[key.project, default: 0] += 1 }
+
+        var groups = byKey.map { key, members in
+            ContainerGroup(
+                project: key.project,
+                containers: sorted(members),
+                qualifier: nameCounts[key.project, default: 0] > 1
+                    ? Self.directoryQualifier(key.workingDir, project: key.project)
+                    : nil
+            )
+        }
+        groups.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
         if !loose.isEmpty {
             groups.append(ContainerGroup(project: nil, containers: sorted(loose)))
         }
         return groups
+    }
+
+    /// Human tag telling colliding projects apart: the nearest path
+    /// component that isn't just the project name again.
+    /// "/Users/x/irems-sg/docker" (project "docker") → "irems-sg".
+    public static func directoryQualifier(_ workingDir: String?, project: String) -> String? {
+        guard let workingDir else { return nil }
+        let components = workingDir.split(separator: "/").map(String.init)
+        for component in components.reversed() where component.lowercased() != project.lowercased() {
+            return component
+        }
+        return components.last
     }
 }
