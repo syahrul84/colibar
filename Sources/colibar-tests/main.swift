@@ -269,6 +269,16 @@ suite("runtime version parsing") {
     expectEqual(img("ghcr.io/org/app:2.1").tagVersion, "app 2.1", "registry path uses basename")
 }
 
+suite("brew outdated parsing") {
+    let json = #"{"formulae":[{"name":"docker","installed_versions":["29.6.0"],"current_version":"29.7.1","pinned":false},{"name":"python@3.12","installed_versions":["3.12.1"],"current_version":"3.12.8","pinned":false},{"name":"docker-compose","installed_versions":["5.1.2","5.1.4"],"current_version":"5.2.0","pinned":false}],"casks":[]}"#
+    let items = ColimaService.parseBrewOutdated(json, interesting: ColimaService.toolchainFormulas)
+    expectEqual(items.map(\.name), ["docker", "docker-compose"], "only toolchain formulas, sorted")
+    expectEqual(items.first?.latest, "29.7.1", "latest version")
+    expectEqual(items.last?.installed, "5.1.4", "newest installed version when several")
+    expectEqual(ColimaService.parseBrewOutdated("not json", interesting: ["docker"]), [], "garbage tolerated")
+    expectEqual(ColimaService.parseBrewOutdated(#"{"formulae":[],"casks":[]}"#, interesting: ["docker"]), [], "nothing outdated")
+}
+
 suite("update version comparison") {
     expect(AppUpdate.isNewer("v1.7.0", than: "1.6.2"), "v-prefixed newer")
     expect(AppUpdate.isNewer("1.7", than: "1.6.2"), "short remote wins over longer older")

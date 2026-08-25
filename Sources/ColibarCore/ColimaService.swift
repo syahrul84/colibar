@@ -350,6 +350,53 @@ public struct ColimaService: Sendable {
         }
     }
 
+    // MARK: - Toolchain updates (Homebrew)
+
+    /// The formulas Colibar depends on and offers to keep current.
+    public static let toolchainFormulas: Set<String> = ["colima", "docker", "docker-compose"]
+
+    /// What's outdated among the toolchain formulas, per Homebrew. Returns
+    /// empty on any brew hiccup — a package manager's problems are not
+    /// something to surface as Colibar errors.
+    public func checkToolchainOutdated() throws -> [BrewOutdatedItem] {
+        guard let brew = shell.resolve("brew") else { return [] }
+        let result = try shell.runExecutable(at: brew, ["outdated", "--json=v2"], timeout: 300)
+        guard result.succeeded else { return [] }
+        return Self.parseBrewOutdated(result.stdout, interesting: Self.toolchainFormulas)
+    }
+
+    public static func parseBrewOutdated(_ json: String, interesting: Set<String>) -> [BrewOutdatedItem] {
+        struct Payload: Decodable {
+            let formulae: [Formula]
+
+            struct Formula: Decodable {
+                let name: String
+                let installed_versions: [String]
+                let current_version: String
+            }
+        }
+        guard
+            let data = json.data(using: .utf8),
+            let payload = try? JSONDecoder().decode(Payload.self, from: data)
+        else { return [] }
+        return payload.formulae
+            .filter { interesting.contains($0.name) }
+            .compactMap { formula in
+                formula.installed_versions.last.map {
+                    BrewOutdatedItem(name: formula.name, installed: $0, latest: formula.current_version)
+                }
+            }
+            .sorted { $0.name < $1.name }
+    }
+
+    /// One-click upgrade — in Terminal, deliberately: brew is slow and
+    /// chatty, and upgrading colima needs a user-timed VM restart to apply.
+    /// The user should see all of that, not a spinner.
+    public func openToolchainUpgradeInTerminal(formulas: [String]) throws {
+        guard !formulas.isEmpty, let brew = shell.resolve("brew") else { return }
+        try runInTerminal("\(brew) upgrade " + formulas.joined(separator: " "))
+    }
+
     // MARK: - Runtime version probing
 
     /// Ask a running container what runtime versions it carries, e.g.

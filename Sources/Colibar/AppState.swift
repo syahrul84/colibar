@@ -116,6 +116,10 @@ final class AppState: ObservableObject {
 
     /// GitHub Releases updater; owns its own published state.
     let updates = UpdateManager()
+
+    /// Outdated colima/docker/docker-compose formulas, checked daily.
+    @Published var brewOutdated: [BrewOutdatedItem] = []
+    private var brewCheckTask: Task<Void, Never>?
     @Published var httpsEnabled: Bool {
         didSet { UserDefaults.standard.set(httpsEnabled, forKey: "httpsEnabled") }
     }
@@ -172,7 +176,36 @@ final class AppState: ObservableObject {
             )
         }
         if autoCheckUpdates { updates.autoCheckIfDue() }
+        checkToolchainIfDue()
         startPolling()
+    }
+
+    /// Daily background `brew outdated` for the toolchain formulas.
+    private func checkToolchainIfDue() {
+        let last = UserDefaults.standard.double(forKey: "lastBrewCheck")
+        guard Date().timeIntervalSince1970 - last > 86_400, brewCheckTask == nil else { return }
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "lastBrewCheck")
+        let service = self.service
+        brewCheckTask = Task { [weak self] in
+            let outdated = await Task.detached(priority: .utility) {
+                (try? service.checkToolchainOutdated()) ?? []
+            }.value
+            guard let self else { return }
+            if !outdated.isEmpty {
+                appLog.notice("toolchain outdated: \(outdated.map(\.name).joined(separator: ","), privacy: .public)")
+            }
+            self.brewOutdated = outdated
+            self.brewCheckTask = nil
+        }
+    }
+
+    /// Open Terminal running `brew upgrade` for whatever is behind. The list
+    /// clears optimistically; the next daily check re-verifies.
+    func upgradeToolchain() {
+        let names = brewOutdated.map(\.name)
+        guard !names.isEmpty else { return }
+        terminalAction { try $0.openToolchainUpgradeInTerminal(formulas: names) }
+        brewOutdated = []
     }
 
     var menuBarSummary: MenuBarSummary {

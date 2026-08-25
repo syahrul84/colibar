@@ -204,6 +204,21 @@ public struct DockerContainer: Identifiable, Equatable, Sendable {
     }
 }
 
+// MARK: - Toolchain updates
+
+/// One outdated Homebrew formula: "docker 29.6.0 → 29.7.1".
+public struct BrewOutdatedItem: Equatable, Sendable {
+    public let name: String
+    public let installed: String
+    public let latest: String
+
+    public init(name: String, installed: String, latest: String) {
+        self.name = name
+        self.installed = installed
+        self.latest = latest
+    }
+}
+
 // MARK: - App updates
 
 public enum AppUpdate {

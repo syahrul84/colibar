@@ -143,6 +143,31 @@ struct SettingsView: View {
                     }
                 }
                 Toggle("Check for updates automatically", isOn: $appState.autoCheckUpdates)
+
+                if !appState.brewOutdated.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(appState.brewOutdated, id: \.name) { item in
+                            Text("\(item.name) \(item.installed) → \(item.latest)")
+                                .font(.caption)
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                        }
+                        HStack(spacing: 8) {
+                            Button("Update in Terminal") { appState.upgradeToolchain() }
+                                .controlSize(.small)
+                            Text("Runs brew where you can watch it.")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                        if appState.brewOutdated.contains(where: { $0.name == "colima" }) {
+                            Text("A colima upgrade applies after the VM restarts — use the instance's restart when convenient.")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(.top, 2)
+                }
             }
 
             Divider()
