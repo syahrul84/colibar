@@ -82,7 +82,7 @@ struct PanelView: View {
             }
             Spacer()
             Button {
-                appState.refreshNow()
+                appState.manualRefresh()
             } label: {
                 Image(systemName: "arrow.clockwise")
             }

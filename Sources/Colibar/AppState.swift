@@ -183,20 +183,42 @@ final class AppState: ObservableObject {
     /// Daily background `brew outdated` for the toolchain formulas.
     private func checkToolchainIfDue() {
         let last = UserDefaults.standard.double(forKey: "lastBrewCheck")
-        guard Date().timeIntervalSince1970 - last > 86_400, brewCheckTask == nil else { return }
+        guard Date().timeIntervalSince1970 - last > 86_400 else { return }
+        runBrewCheck()
+    }
+
+    /// The daily cadence finds NEW updates; this one clears STALE ones.
+    /// When the panel shows outdated formulas, the user may just have
+    /// upgraded them outside Colibar — so re-verify whenever the list is
+    /// visible and the user opens the panel or refreshes. Lightly throttled;
+    /// no-ops when nothing is displayed.
+    private var lastBrewRevalidate = Date.distantPast
+    func revalidateToolchainIfNeeded() {
+        guard !brewOutdated.isEmpty else { return }
+        guard Date().timeIntervalSince(lastBrewRevalidate) > 60 else { return }
+        runBrewCheck()
+    }
+
+    private func runBrewCheck() {
+        guard brewCheckTask == nil else { return }
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "lastBrewCheck")
+        lastBrewRevalidate = Date()
         let service = self.service
         brewCheckTask = Task { [weak self] in
             let outdated = await Task.detached(priority: .utility) {
                 (try? service.checkToolchainOutdated()) ?? []
             }.value
             guard let self else { return }
-            if !outdated.isEmpty {
-                appLog.notice("toolchain outdated: \(outdated.map(\.name).joined(separator: ","), privacy: .public)")
-            }
+            appLog.notice("toolchain check: \(outdated.count) outdated\(outdated.isEmpty ? "" : " (\(outdated.map(\.name).joined(separator: ",")))", privacy: .public)")
             self.brewOutdated = outdated
             self.brewCheckTask = nil
         }
+    }
+
+    /// The header's refresh button: containers now, plus a stale-row check.
+    func manualRefresh() {
+        refreshNow()
+        revalidateToolchainIfNeeded()
     }
 
     /// Open Terminal running `brew upgrade` for whatever is behind. The list
@@ -268,6 +290,7 @@ final class AppState: ObservableObject {
         guard !panelVisible else { return }
         panelVisible = true
         refreshNow()
+        revalidateToolchainIfNeeded()
         restartPollTimer()
     }
 
