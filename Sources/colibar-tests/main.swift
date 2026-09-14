@@ -104,6 +104,21 @@ suite("docker container parsing") {
 
     expectEqual(DockerContainer.parseHostPorts("0.0.0.0:8080-8090->8080-8090/tcp"), [8080], "port range takes first")
     expectEqual(DockerContainer.parseHostPorts("5000/tcp"), [], "unpublished port ignored")
+
+    expectEqual(
+        DockerContainer.parseMounts("/Users/x/web,009a049db17b998f1a5d4c1b20,/Users/x/.ssh"),
+        ["/Users/x/web", "/Users/x/.ssh"],
+        "bind mounts kept, volume names dropped"
+    )
+    let loose = makeContainer("vue-dev")
+    expectEqual(loose.primaryLocation?.path, nil, "no location without labels or mounts")
+    let mounted = DockerContainer(
+        id: "m", name: "vue-dev", image: "node:12", state: "exited", status: "Exited",
+        hostPorts: [], sizeRaw: nil, health: nil, composeProject: nil,
+        composeService: nil, composeWorkingDir: nil, mounts: ["/Users/x/web"]
+    )
+    expectEqual(mounted.primaryLocation?.label, "Mount", "bind mount as location fallback")
+    expectEqual(mounted.primaryLocation?.path, "/Users/x/web", "first mount wins")
 }
 
 suite("compose grouping") {

@@ -91,6 +91,10 @@ public struct DockerContainer: Identifiable, Equatable, Sendable {
     public let composeService: String?
     /// com.docker.compose.project.working_dir — where the compose file lives.
     public let composeWorkingDir: String?
+    /// Host folders bind-mounted into the container (absolute paths only;
+    /// named volumes are dropped). For label-less `docker run` containers,
+    /// the first of these is the best answer to "where does this live".
+    public let mounts: [String]
 
     public var shortID: String { String(id.prefix(12)) }
     public var isRunning: Bool { state == "running" }
@@ -148,7 +152,7 @@ public struct DockerContainer: Identifiable, Equatable, Sendable {
     public init(
         id: String, name: String, image: String, state: String, status: String,
         hostPorts: [Int], sizeRaw: String?, health: String?, composeProject: String?,
-        composeService: String?, composeWorkingDir: String?
+        composeService: String?, composeWorkingDir: String?, mounts: [String] = []
     ) {
         self.id = id
         self.name = name
@@ -161,6 +165,23 @@ public struct DockerContainer: Identifiable, Equatable, Sendable {
         self.composeProject = composeProject
         self.composeService = composeService
         self.composeWorkingDir = composeWorkingDir
+        self.mounts = mounts
+    }
+
+    /// Where this container "lives" on disk: the compose project directory
+    /// when docker recorded one, else the first bind-mounted host folder.
+    public var primaryLocation: (label: String, path: String)? {
+        if let composeWorkingDir { return ("Path", composeWorkingDir) }
+        if let mount = mounts.first { return ("Mount", mount) }
+        return nil
+    }
+
+    /// docker ps Mounts field: comma-joined mount sources mixing bind paths
+    /// and volume names — keep only real host paths.
+    public static func parseMounts(_ raw: String) -> [String] {
+        raw.split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { $0.hasPrefix("/") }
     }
 
     /// Parse docker's `Labels` field ("key=value,key=value"). Label values in

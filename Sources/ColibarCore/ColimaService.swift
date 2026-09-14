@@ -229,6 +229,7 @@ public struct ColimaService: Sendable {
         let Labels: String?
         let Size: String?
         let HealthStatus: String?
+        let Mounts: String?
     }
 
     public static func parseContainersJSON(_ output: String) -> [DockerContainer] {
@@ -252,7 +253,8 @@ public struct ColimaService: Sendable {
                 health: parsed.HealthStatus.flatMap { $0 == "none" || $0.isEmpty ? nil : $0 },
                 composeProject: labels["com.docker.compose.project"],
                 composeService: labels["com.docker.compose.service"],
-                composeWorkingDir: labels["com.docker.compose.project.working_dir"]
+                composeWorkingDir: labels["com.docker.compose.project.working_dir"],
+                mounts: DockerContainer.parseMounts(parsed.Mounts ?? "")
             )
         }
     }

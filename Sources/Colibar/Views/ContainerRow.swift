@@ -149,9 +149,10 @@ struct ContainerRow: View {
             if !container.hostPorts.isEmpty {
                 detailLine("Ports", container.hostPorts.map { ":\(String($0))" }.joined(separator: "  "))
             }
-            if let dir = container.composeWorkingDir {
+            if let location = container.primaryLocation {
+                let dir = location.path
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("Path")
+                    Text(location.label)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                         .frame(width: 52, alignment: .leading)
