@@ -971,6 +971,10 @@ final class AppState: ObservableObject {
         )
     }
 
+    func openInFinder(path: String) {
+        NSWorkspace.shared.open(URL(fileURLWithPath: path, isDirectory: true))
+    }
+
     func openInBrowser(_ container: DockerContainer, port: Int) {
         guard let url = webURL(for: container, port: port) else { return }
         NSWorkspace.shared.open(url)

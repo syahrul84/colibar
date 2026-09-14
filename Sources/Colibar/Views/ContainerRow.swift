@@ -149,6 +149,29 @@ struct ContainerRow: View {
             if !container.hostPorts.isEmpty {
                 detailLine("Ports", container.hostPorts.map { ":\(String($0))" }.joined(separator: "  "))
             }
+            if let dir = container.composeWorkingDir {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("Path")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 52, alignment: .leading)
+                    Text(abbreviateHome(dir))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Button {
+                        appState.openInFinder(path: dir)
+                    } label: {
+                        Image(systemName: "folder")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Open in Finder")
+                }
+            }
             if let versions = versionLines {
                 ForEach(Array(versions.enumerated()), id: \.offset) { index, version in
                     detailLine(index == 0 ? "Versions" : "", version)
@@ -171,6 +194,12 @@ struct ContainerRow: View {
             return [tag]
         }
         return nil
+    }
+
+    /// "/Users/syahrul/Documents/x" → "~/Documents/x" — shorter, still exact.
+    private func abbreviateHome(_ path: String) -> String {
+        let home = NSHomeDirectory()
+        return path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path
     }
 
     private func detailLine(_ label: String, _ value: String) -> some View {

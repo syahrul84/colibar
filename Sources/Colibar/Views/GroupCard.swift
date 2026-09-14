@@ -61,6 +61,11 @@ struct GroupCard: View {
             }
             .buttonStyle(.plain)
             Spacer()
+            if let dir = group.workingDir {
+                RowActionButton(systemImage: "folder", help: "Open \(group.title) in Finder") {
+                    appState.openInFinder(path: dir)
+                }
+            }
             if isBusy {
                 ProgressView()
                     .controlSize(.small)
@@ -84,10 +89,11 @@ struct GroupCard: View {
                     Button("Open \(mapping.host)") { appState.openMappedHost(mapping) }
                 }
             }
-            if group.workingDir != nil {
+            if let dir = group.workingDir {
                 Divider()
                 Button("View Project Logs") { appState.openProjectLogs(group) }
                 Button("Open Terminal at Project") { appState.openProjectTerminal(group) }
+                Button("Open in Finder") { appState.openInFinder(path: dir) }
                 if AppState.vsCodeURL != nil {
                     Button("Open in VS Code") { appState.openProjectInEditor(group) }
                 }
