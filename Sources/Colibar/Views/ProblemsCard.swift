@@ -118,6 +118,8 @@ private struct UnnamedProjectRow: View {
                 }
             }
             if editing {
+                // Field and buttons on separate lines — all three labels
+                // truncate if forced onto one 340pt row with the field.
                 HStack(spacing: 6) {
                     Text("name:")
                         .font(.caption.monospaced())
@@ -125,26 +127,29 @@ private struct UnnamedProjectRow: View {
                     TextField("project-name", text: $name)
                         .textFieldStyle(.roundedBorder)
                         .font(.caption)
-                        .frame(width: 150)
+                }
+                HStack(spacing: 8) {
                     Spacer()
                     Button("Cancel") { editing = false }
                         .controlSize(.small)
-                    Button("Save") {
+                    Button("Save & Recreate") {
                         editing = false
                         appState.fixProjectName(warning, name: cleaned)
                     }
                     .controlSize(.small)
                     .keyboardShortcut(.defaultAction)
                     .disabled(cleaned.isEmpty)
+                    .help("Write the name to the compose file and restart the project under it")
                 }
                 if !cleaned.isEmpty, cleaned != name {
                     Text("Will be saved as “\(cleaned)” (compose allows a–z, 0–9, - and _)")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
-                Text("Written to the compose file · applies on next docker compose up")
+                Text("Writes name: to the compose file and restarts the project under it (names only apply when containers are recreated).")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(.horizontal, 8)

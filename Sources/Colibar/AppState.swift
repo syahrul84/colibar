@@ -74,6 +74,8 @@ final class AppState: ObservableObject {
     struct UnnamedProjectWarning: Identifiable, Equatable {
         let id: String // group id
         let title: String
+        let project: String
+        let workingDir: String
         let configPath: String
         let suggestion: String
     }
@@ -820,7 +822,8 @@ final class AppState: ObservableObject {
             else { return nil }
             let config = group.configFile ?? dir + "/docker-compose.yaml"
             return UnnamedProjectWarning(
-                id: group.id, title: group.title, configPath: config, suggestion: suggestion
+                id: group.id, title: group.title, project: project, workingDir: dir,
+                configPath: config, suggestion: suggestion
             )
         }
         guard !candidates.isEmpty, nameCheckTask == nil else { return }
@@ -841,26 +844,44 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Write a user-confirmed `name:` into the project's compose file.
+    /// Write a user-confirmed `name:` into the project's compose file and
+    /// recreate the stack under it — recreation is not optional, because
+    /// labels are immutable and a saved-but-unapplied name just confuses
+    /// (stop/start never applies it).
     func fixProjectName(_ warning: UnnamedProjectWarning, name: String) {
         let cleaned = ComposeNameAdvisor.sanitize(name)
         guard !cleaned.isEmpty else { return }
         let service = self.service
+        // The old-name containers going away is expected, not a crash.
+        groups.first { $0.id == warning.id }?.containers.forEach {
+            suppressNotificationIDs.insert($0.id)
+        }
+        busyGroups.insert(warning.id)
+        actionsInFlight += 1
         Task { [weak self] in
+            var failure: String?
             do {
                 try await Task.detached(priority: .userInitiated) {
                     try service.addProjectName(cleaned, toComposeFile: warning.configPath)
+                    try service.recreateProject(oldName: warning.project, workingDir: warning.workingDir)
                 }.value
-                guard let self else { return }
+            } catch {
+                failure = error.localizedDescription
+            }
+            guard let self else { return }
+            self.busyGroups.remove(warning.id)
+            self.actionsInFlight -= 1
+            if let failure {
+                self.lastError = failure
+            } else {
                 self.unnamedProjects.removeAll { $0.id == warning.id }
-                self.statusMessage = "Added name: \(cleaned) — applies on the next docker compose up"
+                self.statusMessage = "Renamed to \(cleaned) and recreated the project"
                 Task { [weak self] in
                     try? await Task.sleep(for: .seconds(10))
                     self?.statusMessage = nil
                 }
-            } catch {
-                self?.lastError = "Couldn't update compose file: \(error.localizedDescription)"
             }
+            self.refreshNow()
         }
     }
 

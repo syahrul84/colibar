@@ -373,6 +373,34 @@ public struct ColimaService: Sendable {
             .write(toFile: path, atomically: true, encoding: .utf8)
     }
 
+    /// Apply a rename for real: tear down the stack under its OLD project
+    /// name, then bring it up reading the (renamed) compose file. Needed
+    /// because labels are immutable — `docker start` reuses the old
+    /// container, so only recreation picks up a new name.
+    public func recreateProject(oldName: String, workingDir: String) throws {
+        let down: ShellResult
+        do {
+            down = try shell.run(
+                "docker",
+                ["compose", "-p", oldName, "--project-directory", workingDir, "down"],
+                timeout: 300
+            )
+        } catch ShellError.binaryNotFound {
+            throw ColimaServiceError.dockerNotInstalled
+        }
+        guard down.succeeded else {
+            throw ColimaServiceError.commandFailed(command: "docker compose down", message: pickMessage(down))
+        }
+        let up = try shell.run(
+            "docker",
+            ["compose", "--project-directory", workingDir, "up", "-d"],
+            timeout: 600
+        )
+        guard up.succeeded else {
+            throw ColimaServiceError.commandFailed(command: "docker compose up", message: pickMessage(up))
+        }
+    }
+
     // MARK: - Project teardown
 
     /// Remove a project's runtime: force-remove its containers, then remove
