@@ -76,8 +76,13 @@ final class AppState: ObservableObject {
             .sorted { $0.instance < $1.instance }
     }
 
-    /// Instance whose resource editor is open (panel navigates to it).
-    @Published var editingInstance: ColimaInstance?
+    /// Which Settings tab is frontmost — lets panel buttons deep-link
+    /// (e.g. the instance sliders button jumps to the Colima tab).
+    enum SettingsTab: String {
+        case general, display, colima
+    }
+
+    @Published var settingsTab: SettingsTab = .general
 
     /// Whether the menu bar window is currently on screen. While it's closed
     /// nobody sees per-second detail, so polling drops to a slow heartbeat

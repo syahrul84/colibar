@@ -7,13 +7,73 @@ struct SettingsRootView: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        TabView {
+        TabView(selection: $appState.settingsTab) {
             GeneralSettingsTab(updates: appState.updates)
                 .tabItem { Label("General", systemImage: "gearshape") }
+                .tag(AppState.SettingsTab.general)
             DisplaySettingsTab()
                 .tabItem { Label("Display", systemImage: "eye") }
+                .tag(AppState.SettingsTab.display)
+            ColimaSettingsTab()
+                .tabItem { Label("Colima", systemImage: "cpu") }
+                .tag(AppState.SettingsTab.colima)
         }
         .frame(width: 480)
+    }
+}
+
+/// Activate + open + front the Settings window. LSUIElement apps must
+/// activate or the window appears behind everything; the second activation
+/// runs after the window exists.
+@MainActor
+func revealSettingsWindow(_ openSettings: OpenSettingsAction) {
+    NSApp.activate(ignoringOtherApps: true)
+    openSettings()
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.windows.first {
+            $0.identifier?.rawValue.contains("Settings") == true || $0.title.hasSuffix("Settings")
+        }?.makeKeyAndOrderFront(nil)
+    }
+}
+
+// MARK: - Colima
+
+/// Per-instance resource editing, one editor per instance.
+struct ColimaSettingsTab: View {
+    @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if appState.instances.isEmpty {
+                Text("No Colima instances found.")
+                    .foregroundStyle(.secondary)
+                    .padding(4)
+            }
+            ForEach(appState.instances) { instance in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        StatusDot(on: instance.isRunning)
+                        Text("\(instance.status.label) · \(instance.specsDescription)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        if appState.busyInstances.contains(instance.name) {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    InstanceConfigView(instance: instance)
+                        .id(instance) // re-seed steppers when specs change
+                }
+                if instance.id != appState.instances.last?.id {
+                    Divider()
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 12)
     }
 }
 

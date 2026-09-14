@@ -3,8 +3,15 @@ import SwiftUI
 
 struct InstanceRow: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.openSettings) private var openSettings
     let instance: ColimaInstance
     @State private var hovering = false
+
+    /// Resource editing lives in Settings → Colima now.
+    private func openColimaSettings() {
+        appState.settingsTab = .colima
+        revealSettingsWindow(openSettings)
+    }
 
     private var isBusy: Bool { appState.busyInstances.contains(instance.name) }
 
@@ -41,7 +48,7 @@ struct InstanceRow: View {
                     systemImage: "slider.horizontal.3",
                     help: "Edit CPU, memory and disk for \(instance.name)"
                 ) {
-                    appState.editingInstance = instance
+                    openColimaSettings()
                 }
                 if instance.isRunning {
                     RowActionButton(systemImage: "stop.fill", help: "Stop \(instance.name)") {
@@ -64,7 +71,7 @@ struct InstanceRow: View {
         .contextMenu {
             Button("Restart") { appState.restartInstance(instance) }
                 .disabled(isBusy || !instance.isRunning)
-            Button("Edit Resources…") { appState.editingInstance = instance }
+            Button("Edit Resources…") { openColimaSettings() }
                 .disabled(isBusy)
         }
     }

@@ -36,27 +36,19 @@ struct MeasuredScroll<Content: View>: View {
 /// Root of the menu bar window: header, instances, containers, footer.
 struct PanelView: View {
     @EnvironmentObject private var appState: AppState
+    /// The supported way to open the Settings scene on macOS 14+ — the old
+    /// showSettingsWindow: selector is no longer honored.
+    @Environment(\.openSettings) private var openSettings
 
-    /// Settings lives in its own window now (the panel got too small for
-    /// it). LSUIElement apps must activate first or the window opens behind
-    /// whatever is frontmost.
     private func openSettingsWindow() {
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        revealSettingsWindow(openSettings)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider()
-            if let editing = appState.editingInstance {
-                MeasuredScroll {
-                    InstanceConfigView(instance: editing)
-                        .id(editing.name)
-                }
-            } else {
-                content
-            }
+            content
         }
         .frame(width: 340)
         .onAppear { appState.panelDidOpen() }

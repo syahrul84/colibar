@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Colima instances
 
-public enum InstanceStatus: Equatable, Sendable {
+public enum InstanceStatus: Equatable, Hashable, Sendable {
     case running
     case stopped
     case other(String)
@@ -24,7 +24,7 @@ public enum InstanceStatus: Equatable, Sendable {
     }
 }
 
-public struct ColimaInstance: Identifiable, Equatable, Sendable {
+public struct ColimaInstance: Identifiable, Equatable, Hashable, Sendable {
     public let name: String
     public let status: InstanceStatus
     public let arch: String?

@@ -55,19 +55,13 @@ struct InstanceConfigView: View {
             .foregroundStyle(.secondary)
 
             HStack {
-                Button("Cancel") {
-                    appState.editingInstance = nil
-                }
-                .keyboardShortcut(.cancelAction)
                 Spacer()
                 Button(instance.isRunning ? "Apply & Restart" : "Apply & Start") {
                     appState.applyInstanceConfig(
                         instance, cpus: cpus, memoryGiB: memoryGiB, diskGiB: diskGiB
                     )
-                    appState.editingInstance = nil
                 }
-                .keyboardShortcut(.defaultAction)
-                .disabled(!changed && instance.isRunning)
+                .disabled((!changed && instance.isRunning) || appState.busyInstances.contains(instance.name))
             }
         }
         .padding(12)
