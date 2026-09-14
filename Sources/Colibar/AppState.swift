@@ -113,6 +113,27 @@ final class AppState: ObservableObject {
     @Published var autoCheckUpdates: Bool {
         didSet { UserDefaults.standard.set(autoCheckUpdates, forKey: "autoCheckUpdates") }
     }
+    // Display preferences: what the main list shows.
+    @Published var showInstances: Bool {
+        didSet { UserDefaults.standard.set(showInstances, forKey: "showInstances") }
+    }
+    @Published var showUsageStats: Bool {
+        didSet { UserDefaults.standard.set(showUsageStats, forKey: "showUsageStats") }
+    }
+    @Published var showOtherGroup: Bool {
+        didSet { UserDefaults.standard.set(showOtherGroup, forKey: "showOtherGroup") }
+    }
+    /// Group IDs the user has hidden from the main list (Settings → Projects).
+    @Published var hiddenProjectIDs: Set<String> = []
+
+    func setProjectHidden(_ groupID: String, hidden: Bool) {
+        if hidden {
+            hiddenProjectIDs.insert(groupID)
+        } else {
+            hiddenProjectIDs.remove(groupID)
+        }
+        UserDefaults.standard.set(Array(hiddenProjectIDs), forKey: "hiddenProjectIDs")
+    }
 
     /// GitHub Releases updater; owns its own published state.
     let updates = UpdateManager()
@@ -168,6 +189,10 @@ final class AppState: ObservableObject {
             customHosts = stored
         }
         autoCheckUpdates = defaults.object(forKey: "autoCheckUpdates") as? Bool ?? true
+        showInstances = defaults.object(forKey: "showInstances") as? Bool ?? true
+        showUsageStats = defaults.object(forKey: "showUsageStats") as? Bool ?? true
+        showOtherGroup = defaults.object(forKey: "showOtherGroup") as? Bool ?? true
+        hiddenProjectIDs = Set(defaults.stringArray(forKey: "hiddenProjectIDs") ?? [])
         if notifyOnCrash { requestNotificationAuthorization() }
         updates.onBackgroundUpdateFound = { [weak self] update in
             self?.postNotification(
@@ -242,6 +267,10 @@ final class AppState: ObservableObject {
 
     var visibleGroups: [ContainerGroup] {
         var result = groups
+        result.removeAll { hiddenProjectIDs.contains($0.id) }
+        if !showOtherGroup {
+            result.removeAll { $0.project == nil }
+        }
         if !showStoppedContainers {
             result = result.compactMap { group in
                 let running = group.containers.filter(\.isRunning)
@@ -783,8 +812,9 @@ final class AppState: ObservableObject {
     /// Sample usage for running containers. Never blocks the list refresh;
     /// at most one sample in flight, stale values persist until replaced.
     private func refreshStats(for containers: [DockerContainer]) {
-        // Stats are display-only; skip the expensive sample when nobody's looking.
-        guard panelVisible, statsTask == nil else { return }
+        // Stats are display-only; skip the expensive sample when nobody's
+        // looking or the user has hidden usage entirely.
+        guard panelVisible, showUsageStats, statsTask == nil else { return }
         guard containers.contains(where: \.isRunning) else {
             statsByID = [:]
             return
@@ -907,6 +937,44 @@ final class AppState: ObservableObject {
     func stopGroup(_ group: ContainerGroup) {
         groupAction(group, ids: group.containers.filter(\.isRunning).map(\.id)) {
             try $0.stopContainers($1)
+        }
+    }
+
+    /// Delete a project's runtime (containers + images), keeping volumes and
+    /// files. The group disappears from the panel until recreated with
+    /// `docker compose up`. Callers must have confirmed with the user.
+    func teardownGroup(_ group: ContainerGroup) {
+        let ids = group.containers.map(\.id)
+        let images = group.containers.map(\.image).filter { !$0.isEmpty }
+        guard !ids.isEmpty else { return }
+        ids.forEach { suppressNotificationIDs.insert($0) }
+        let service = self.service
+        let groupID = group.id
+        busyGroups.insert(groupID)
+        actionsInFlight += 1
+        Task { [weak self] in
+            var summary: String?
+            var failure: String?
+            do {
+                summary = try await Task.detached(priority: .userInitiated) {
+                    try service.removeContainersAndImages(ids: ids, images: images)
+                }.value
+            } catch {
+                failure = error.localizedDescription
+            }
+            guard let self else { return }
+            self.actionsInFlight -= 1
+            self.busyGroups.remove(groupID)
+            if let failure {
+                self.lastError = failure
+            } else if let summary {
+                self.statusMessage = summary
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(10))
+                    self?.statusMessage = nil
+                }
+            }
+            self.refreshNow()
         }
     }
 

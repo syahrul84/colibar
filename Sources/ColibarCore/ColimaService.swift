@@ -352,6 +352,48 @@ public struct ColimaService: Sendable {
         }
     }
 
+    // MARK: - Project teardown
+
+    /// Remove a project's runtime: force-remove its containers, then remove
+    /// their images. Volumes and source files are never touched — the
+    /// project is recreatable with `docker compose up`. Image removals may
+    /// partially fail (an image shared with another project stays); that's
+    /// reported, not thrown.
+    public func removeContainersAndImages(ids: [String], images: [String]) throws -> String {
+        guard !ids.isEmpty else { return "Nothing to remove" }
+        let result: ShellResult
+        do {
+            result = try shell.run("docker", ["rm", "-f"] + ids, timeout: 180)
+        } catch ShellError.binaryNotFound {
+            throw ColimaServiceError.dockerNotInstalled
+        }
+        if result.timedOut { throw ColimaServiceError.commandTimedOut(command: "docker rm") }
+        guard result.succeeded else {
+            let message = pickMessage(result)
+            if Self.looksLikeDaemonUnreachable(message) {
+                throw ColimaServiceError.dockerUnreachable(message)
+            }
+            throw ColimaServiceError.commandFailed(command: "docker rm", message: message)
+        }
+
+        var removedImages = 0
+        for image in Set(images) {
+            if let removal = try? shell.run("docker", ["image", "rm", image], timeout: 120),
+               removal.succeeded {
+                removedImages += 1
+            }
+        }
+        let uniqueImages = Set(images).count
+        var summary = "Removed \(ids.count) container\(ids.count == 1 ? "" : "s")"
+        if uniqueImages > 0 {
+            summary += ", \(removedImages)/\(uniqueImages) image\(uniqueImages == 1 ? "" : "s")"
+            if removedImages < uniqueImages {
+                summary += " (rest in use elsewhere)"
+            }
+        }
+        return summary
+    }
+
     // MARK: - Toolchain updates (Homebrew)
 
     /// The formulas Colibar depends on and offers to keep current.

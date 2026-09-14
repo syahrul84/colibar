@@ -1,15 +1,27 @@
 import ColibarCore
 import SwiftUI
 
-struct SettingsView: View {
+/// The Settings window (a real window, not panel-embedded — the panel got
+/// too cramped): two tabs, General and Display.
+struct SettingsRootView: View {
     @EnvironmentObject private var appState: AppState
-    @ObservedObject private var updates: UpdateManager
-    @Binding var isPresented: Bool
 
-    init(isPresented: Binding<Bool>, updates: UpdateManager) {
-        _isPresented = isPresented
-        self.updates = updates
+    var body: some View {
+        TabView {
+            GeneralSettingsTab(updates: appState.updates)
+                .tabItem { Label("General", systemImage: "gearshape") }
+            DisplaySettingsTab()
+                .tabItem { Label("Display", systemImage: "eye") }
+        }
+        .frame(width: 480)
     }
+}
+
+// MARK: - General
+
+struct GeneralSettingsTab: View {
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject var updates: UpdateManager
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -19,8 +31,6 @@ struct SettingsView: View {
                 }
             }
             .pickerStyle(.segmented)
-
-            Toggle("Show stopped containers", isOn: $appState.showStoppedContainers)
 
             Toggle("Notify when a container stops unexpectedly", isOn: $appState.notifyOnCrash)
 
@@ -188,10 +198,104 @@ struct SettingsView: View {
                 .controlSize(.small)
                 .help("Star the Colibar repository")
                 Spacer()
-                Button("Done") { isPresented = false }
-                    .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(12)
+        .padding(16)
+    }
+}
+
+// MARK: - Display
+
+struct DisplaySettingsTab: View {
+    @EnvironmentObject private var appState: AppState
+    @State private var confirmingTeardownID: String?
+
+    /// All compose projects, including currently hidden ones (this is where
+    /// they get unhidden).
+    private var projectGroups: [ContainerGroup] {
+        appState.groups.filter { $0.project != nil }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("SHOW IN LIST")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Toggle("Colima instances", isOn: $appState.showInstances)
+                Toggle("Usage stats (CPU & RAM)", isOn: $appState.showUsageStats)
+                Toggle("Stopped containers", isOn: $appState.showStoppedContainers)
+                Toggle("“Other” (non-compose) containers", isOn: $appState.showOtherGroup)
+            }
+
+            if !projectGroups.isEmpty {
+                Divider()
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("PROJECTS")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    ForEach(projectGroups) { group in
+                        ProjectSettingsRow(group: group, confirmingID: $confirmingTeardownID)
+                    }
+                    Text("Unchecking hides a project from the list. The trash button deletes its containers and images — source files and data volumes are kept, and the project comes back with docker compose up.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(16)
+    }
+}
+
+/// One project in Display settings: visibility checkbox + delete-runtime
+/// button with inline confirmation.
+private struct ProjectSettingsRow: View {
+    @EnvironmentObject private var appState: AppState
+    let group: ContainerGroup
+    @Binding var confirmingID: String?
+
+    private var isBusy: Bool { appState.busyGroups.contains(group.id) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Toggle(group.title, isOn: Binding(
+                    get: { !appState.hiddenProjectIDs.contains(group.id) },
+                    set: { appState.setProjectHidden(group.id, hidden: !$0) }
+                ))
+                Spacer()
+                if isBusy {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Button {
+                        confirmingID = confirmingID == group.id ? nil : group.id
+                    } label: {
+                        Image(systemName: "trash")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Delete \(group.title)'s containers and images")
+                }
+            }
+            if confirmingID == group.id, !isBusy {
+                HStack(spacing: 8) {
+                    Text("Delete \(group.title)'s containers and images? Files and data volumes are kept.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Button("Cancel") { confirmingID = nil }
+                        .controlSize(.small)
+                    Button("Delete", role: .destructive) {
+                        confirmingID = nil
+                        appState.teardownGroup(group)
+                    }
+                    .controlSize(.small)
+                }
+            }
+        }
     }
 }

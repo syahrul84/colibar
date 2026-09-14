@@ -17,6 +17,11 @@ struct ColibarApp: App {
             MenuBarLabel(summary: appState.menuBarSummary)
         }
         .menuBarExtraStyle(.window)
+
+        Settings {
+            SettingsRootView()
+                .environmentObject(appState)
+        }
     }
 }
 

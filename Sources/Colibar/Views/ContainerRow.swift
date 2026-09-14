@@ -120,7 +120,7 @@ struct ContainerRow: View {
     /// Running: "CPU 0.5% · RAM 2.0%". Stopped: docker's status line, since
     /// there is no usage to show and the reason matters.
     private var compactSubtitle: String {
-        guard container.isRunning else {
+        guard container.isRunning, appState.showUsageStats else {
             return container.status.isEmpty ? container.state : container.status
         }
         guard let stats else { return "measuring…" }

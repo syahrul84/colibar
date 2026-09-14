@@ -71,6 +71,18 @@ if arguments.count >= 3, arguments[0] == "domains-test",
     }
 }
 
+// Dev verification: remove one container + image (the teardown code path).
+//   colibar-cli teardown-test <containerID> <image>
+if arguments.count == 3, arguments[0] == "teardown-test" {
+    do {
+        print(try service.removeContainersAndImages(ids: [arguments[1]], images: [arguments[2]]))
+        exit(0)
+    } catch {
+        print("ERROR: \(error.localizedDescription)")
+        exit(1)
+    }
+}
+
 // Probe runtime versions of every running container (dev verification).
 if arguments.count == 1, arguments[0] == "probe-versions" {
     do {

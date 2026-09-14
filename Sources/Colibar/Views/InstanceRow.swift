@@ -25,7 +25,7 @@ struct InstanceRow: View {
                 Text(isBusy ? "Working…" : "\(instance.status.label) · \(instance.specsDescription)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                if !isBusy, instance.isRunning, let usage = appState.overallUsage {
+                if !isBusy, instance.isRunning, appState.showUsageStats, let usage = appState.overallUsage {
                     Text(usageLine(usage))
                         .font(.caption)
                         .foregroundStyle(.secondary)

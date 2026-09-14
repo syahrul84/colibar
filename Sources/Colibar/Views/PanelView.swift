@@ -36,7 +36,14 @@ struct MeasuredScroll<Content: View>: View {
 /// Root of the menu bar window: header, instances, containers, footer.
 struct PanelView: View {
     @EnvironmentObject private var appState: AppState
-    @State private var showingSettings = false
+
+    /// Settings lives in its own window now (the panel got too small for
+    /// it). LSUIElement apps must activate first or the window opens behind
+    /// whatever is frontmost.
+    private func openSettingsWindow() {
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -46,10 +53,6 @@ struct PanelView: View {
                 MeasuredScroll {
                     InstanceConfigView(instance: editing)
                         .id(editing.name)
-                }
-            } else if showingSettings {
-                MeasuredScroll {
-                    SettingsView(isPresented: $showingSettings, updates: appState.updates)
                 }
             } else {
                 content
@@ -89,12 +92,12 @@ struct PanelView: View {
             .buttonStyle(.borderless)
             .help("Refresh now")
             Button {
-                showingSettings.toggle()
+                openSettingsWindow()
             } label: {
-                Image(systemName: showingSettings ? "xmark.circle" : "gearshape")
+                Image(systemName: "gearshape")
             }
             .buttonStyle(.borderless)
-            .help(showingSettings ? "Close settings" : "Settings")
+            .help("Settings")
             Button {
                 NSApplication.shared.terminate(nil)
             } label: {
@@ -119,7 +122,9 @@ struct PanelView: View {
             MeasuredScroll {
                 VStack(alignment: .leading, spacing: 10) {
                     ProblemsCard()
-                    instancesSection
+                    if appState.showInstances {
+                        instancesSection
+                    }
                     containersSection
                 }
                 .padding(12)

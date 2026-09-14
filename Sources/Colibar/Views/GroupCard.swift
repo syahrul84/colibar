@@ -49,7 +49,7 @@ struct GroupCard: View {
                                 .monospacedDigit()
                         }
                         // Usage stays visible while the card is collapsed.
-                        if let usage = appState.usageSummary(for: group.containers) {
+                        if appState.showUsageStats, let usage = appState.usageSummary(for: group.containers) {
                             Text(usage.compactLabel)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
