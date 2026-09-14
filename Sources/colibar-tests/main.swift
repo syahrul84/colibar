@@ -284,6 +284,35 @@ suite("runtime version parsing") {
     expectEqual(img("ghcr.io/org/app:2.1").tagVersion, "app 2.1", "registry path uses basename")
 }
 
+suite("compose name advisor") {
+    expectEqual(ComposeNameAdvisor.suggestedName(forWorkingDir: "/Users/x/irems-sg/docker"), "irems-sg", "skips generic docker folder")
+    expectEqual(ComposeNameAdvisor.suggestedName(forWorkingDir: "/Users/x/goodbite"), "goodbite", "repo root used directly")
+    expectEqual(ComposeNameAdvisor.suggestedName(forWorkingDir: "/Users/x/My App/compose"), "my-app", "sanitized to compose-legal name")
+    // All-generic paths fall back to the last component — it's only a
+    // prefill; the user confirms or edits before anything is written.
+    expectEqual(ComposeNameAdvisor.suggestedName(forWorkingDir: "/docker/compose"), "compose", "all-generic path falls back to last component")
+
+    expect(!ComposeNameAdvisor.declaresName("services:\n  app:\n"), "no name key")
+    expect(ComposeNameAdvisor.declaresName("name: sunway\n\nservices:\n"), "name key found")
+    expect(!ComposeNameAdvisor.declaresName("# name: commented\nservices:\n  name: nested\n"), "comments and nested keys ignored")
+
+    let inserted = ComposeNameAdvisor.insertingName("sunway", into: "services:\n  app:\n")
+    expect(inserted.hasPrefix("name: sunway\n"), "name prepended")
+    expect(ComposeNameAdvisor.declaresName(inserted), "declares after insertion")
+
+    // Round-trip through the file-writing service path on a scratch file.
+    let scratch = FileManager.default.temporaryDirectory
+        .appendingPathComponent("colibar-name-test-\(UUID().uuidString).yaml")
+    try? "services:\n  app:\n    image: nginx\n".write(to: scratch, atomically: true, encoding: .utf8)
+    let fileService = ColimaService()
+    expectEqual(fileService.composeFileDeclaresName(at: scratch.path), false, "scratch file lacks name")
+    try? fileService.addProjectName("scratch-proj", toComposeFile: scratch.path)
+    expectEqual(fileService.composeFileDeclaresName(at: scratch.path), true, "name written to file")
+    expect((try? String(contentsOf: scratch, encoding: .utf8))?.contains("image: nginx") == true, "original content preserved")
+    try? FileManager.default.removeItem(at: scratch)
+    expectEqual(fileService.composeFileDeclaresName(at: scratch.path), nil, "unreadable file reports nil")
+}
+
 suite("brew outdated parsing") {
     let json = #"{"formulae":[{"name":"docker","installed_versions":["29.6.0"],"current_version":"29.7.1","pinned":false},{"name":"python@3.12","installed_versions":["3.12.1"],"current_version":"3.12.8","pinned":false},{"name":"docker-compose","installed_versions":["5.1.2","5.1.4"],"current_version":"5.2.0","pinned":false}],"casks":[]}"#
     let items = ColimaService.parseBrewOutdated(json, interesting: ColimaService.toolchainFormulas)

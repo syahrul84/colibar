@@ -12,7 +12,7 @@ struct ProblemsCard: View {
     }
 
     var body: some View {
-        if !problems.isEmpty || !appState.diskWarnings.isEmpty {
+        if !problems.isEmpty || !appState.diskWarnings.isEmpty || !appState.unnamedProjects.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
                 Label("Attention", systemImage: "exclamationmark.triangle.fill")
                     .font(.caption.weight(.semibold))
@@ -21,6 +21,9 @@ struct ProblemsCard: View {
                     .padding(.top, 8)
                 ForEach(appState.diskWarnings, id: \.instance) { warning in
                     DiskWarningRow(warning: warning)
+                }
+                ForEach(appState.unnamedProjects) { warning in
+                    UnnamedProjectRow(warning: warning)
                 }
                 ForEach(problems) { container in
                     ProblemRow(container: container)
@@ -76,6 +79,72 @@ private struct DiskWarningRow: View {
                     .controlSize(.small)
                     .keyboardShortcut(.defaultAction)
                 }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 2)
+    }
+}
+
+/// Advisory: a compose project running on its folder-name default. The user
+/// confirms (or edits) the suggested name before anything is written to the
+/// compose file; applies on the project's next compose up.
+private struct UnnamedProjectRow: View {
+    @EnvironmentObject private var appState: AppState
+    let warning: AppState.UnnamedProjectWarning
+    @State private var editing = false
+    @State private var name = ""
+
+    private var cleaned: String { ComposeNameAdvisor.sanitize(name) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "tag")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .padding(.top, 2)
+                Text("“\(warning.title)” has no explicit project name — same-named folders can clobber each other's containers.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                if !editing {
+                    Button("Add Name…") {
+                        name = warning.suggestion
+                        editing = true
+                    }
+                    .controlSize(.small)
+                }
+            }
+            if editing {
+                HStack(spacing: 6) {
+                    Text("name:")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                    TextField("project-name", text: $name)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.caption)
+                        .frame(width: 150)
+                    Spacer()
+                    Button("Cancel") { editing = false }
+                        .controlSize(.small)
+                    Button("Save") {
+                        editing = false
+                        appState.fixProjectName(warning, name: cleaned)
+                    }
+                    .controlSize(.small)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(cleaned.isEmpty)
+                }
+                if !cleaned.isEmpty, cleaned != name {
+                    Text("Will be saved as “\(cleaned)” (compose allows a–z, 0–9, - and _)")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                Text("Written to the compose file · applies on next docker compose up")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
         }
         .padding(.horizontal, 8)

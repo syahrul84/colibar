@@ -69,6 +69,19 @@ final class AppState: ObservableObject {
     /// footer and cleared automatically.
     @Published var statusMessage: String?
 
+    /// Compose projects whose file lacks an explicit `name:` — advisory
+    /// (shown in the Attention card, but never turns the menu bar red).
+    struct UnnamedProjectWarning: Identifiable, Equatable {
+        let id: String // group id
+        let title: String
+        let configPath: String
+        let suggestion: String
+    }
+
+    @Published var unnamedProjects: [UnnamedProjectWarning] = []
+    private var nameCheckedGroupIDs: Set<String> = []
+    private var nameCheckTask: Task<Void, Never>?
+
     var diskWarnings: [(instance: String, percent: Int)] {
         diskUsage
             .filter { $0.value >= Self.diskWarningThreshold }
@@ -415,6 +428,7 @@ final class AppState: ObservableObject {
             refreshStats(for: outcome.containers)
             refreshDiskUsage()
             refreshVersions(for: outcome.containers)
+            checkProjectNames()
             notifyUnexpectedTransitions(outcome.containers)
             previousContainers = Dictionary(outcome.containers.map { ($0.id, $0) }) { first, _ in first }
         }
@@ -784,6 +798,69 @@ final class AppState: ObservableObject {
             appLog.notice("version probes: \(batch.count) containers, \(results.count) answered")
             self.versionsByID.merge(results) { _, new in new }
             self.versionsTask = nil
+        }
+    }
+
+    /// Warn about compose projects with no explicit `name:` — the folder-
+    /// name default means two repos with a `docker/` folder collide and can
+    /// clobber each other. Each group's compose file is read once.
+    private func checkProjectNames() {
+        // Drop warnings for projects that no longer exist.
+        unnamedProjects.removeAll { warning in !groups.contains { $0.id == warning.id } }
+
+        let candidates = groups.compactMap { group -> UnnamedProjectWarning? in
+            guard
+                let project = group.project,
+                !nameCheckedGroupIDs.contains(group.id),
+                let dir = group.workingDir,
+                // Only when the name looks defaulted (== the folder name);
+                // a differing name came from -p or COMPOSE_PROJECT_NAME.
+                project.lowercased() == dir.split(separator: "/").last?.lowercased(),
+                let suggestion = ComposeNameAdvisor.suggestedName(forWorkingDir: dir)
+            else { return nil }
+            let config = group.configFile ?? dir + "/docker-compose.yaml"
+            return UnnamedProjectWarning(
+                id: group.id, title: group.title, configPath: config, suggestion: suggestion
+            )
+        }
+        guard !candidates.isEmpty, nameCheckTask == nil else { return }
+        candidates.forEach { nameCheckedGroupIDs.insert($0.id) }
+        let service = self.service
+        nameCheckTask = Task { [weak self] in
+            let unnamed = await Task.detached(priority: .utility) { () -> [UnnamedProjectWarning] in
+                candidates.filter { service.composeFileDeclaresName(at: $0.configPath) == false }
+            }.value
+            guard let self else { return }
+            if !unnamed.isEmpty {
+                appLog.notice("unnamed compose projects: \(unnamed.map(\.title).joined(separator: ","), privacy: .public)")
+            }
+            for warning in unnamed where !self.unnamedProjects.contains(where: { $0.id == warning.id }) {
+                self.unnamedProjects.append(warning)
+            }
+            self.nameCheckTask = nil
+        }
+    }
+
+    /// Write a user-confirmed `name:` into the project's compose file.
+    func fixProjectName(_ warning: UnnamedProjectWarning, name: String) {
+        let cleaned = ComposeNameAdvisor.sanitize(name)
+        guard !cleaned.isEmpty else { return }
+        let service = self.service
+        Task { [weak self] in
+            do {
+                try await Task.detached(priority: .userInitiated) {
+                    try service.addProjectName(cleaned, toComposeFile: warning.configPath)
+                }.value
+                guard let self else { return }
+                self.unnamedProjects.removeAll { $0.id == warning.id }
+                self.statusMessage = "Added name: \(cleaned) — applies on the next docker compose up"
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(10))
+                    self?.statusMessage = nil
+                }
+            } catch {
+                self?.lastError = "Couldn't update compose file: \(error.localizedDescription)"
+            }
         }
     }
 

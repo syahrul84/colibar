@@ -254,6 +254,8 @@ public struct ColimaService: Sendable {
                 composeProject: labels["com.docker.compose.project"],
                 composeService: labels["com.docker.compose.service"],
                 composeWorkingDir: labels["com.docker.compose.project.working_dir"],
+                composeConfigFile: labels["com.docker.compose.project.config_files"]?
+                    .split(separator: ",").first.map(String.init),
                 mounts: DockerContainer.parseMounts(parsed.Mounts ?? "")
             )
         }
@@ -350,6 +352,25 @@ public struct ColimaService: Sendable {
             }
             throw ColimaServiceError.commandFailed(command: command, message: message)
         }
+    }
+
+    // MARK: - Compose file naming
+
+    /// Whether a compose file sets a top-level `name:`. Nil when unreadable
+    /// (deleted repo, permissions) — treated as "don't warn".
+    public func composeFileDeclaresName(at path: String) -> Bool? {
+        guard let content = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
+        return ComposeNameAdvisor.declaresName(content)
+    }
+
+    /// Prepend `name: <name>` to a compose file that lacks one. No-op if a
+    /// name appeared since the check (edited elsewhere). Takes effect on the
+    /// project's next `docker compose up`.
+    public func addProjectName(_ name: String, toComposeFile path: String) throws {
+        let content = try String(contentsOfFile: path, encoding: .utf8)
+        guard !ComposeNameAdvisor.declaresName(content) else { return }
+        try ComposeNameAdvisor.insertingName(name, into: content)
+            .write(toFile: path, atomically: true, encoding: .utf8)
     }
 
     // MARK: - Project teardown

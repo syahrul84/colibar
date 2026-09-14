@@ -91,6 +91,8 @@ public struct DockerContainer: Identifiable, Equatable, Sendable {
     public let composeService: String?
     /// com.docker.compose.project.working_dir — where the compose file lives.
     public let composeWorkingDir: String?
+    /// First entry of com.docker.compose.project.config_files.
+    public let composeConfigFile: String?
     /// Host folders bind-mounted into the container (absolute paths only;
     /// named volumes are dropped). For label-less `docker run` containers,
     /// the first of these is the best answer to "where does this live".
@@ -152,7 +154,8 @@ public struct DockerContainer: Identifiable, Equatable, Sendable {
     public init(
         id: String, name: String, image: String, state: String, status: String,
         hostPorts: [Int], sizeRaw: String?, health: String?, composeProject: String?,
-        composeService: String?, composeWorkingDir: String?, mounts: [String] = []
+        composeService: String?, composeWorkingDir: String?,
+        composeConfigFile: String? = nil, mounts: [String] = []
     ) {
         self.id = id
         self.name = name
@@ -165,6 +168,7 @@ public struct DockerContainer: Identifiable, Equatable, Sendable {
         self.composeProject = composeProject
         self.composeService = composeService
         self.composeWorkingDir = composeWorkingDir
+        self.composeConfigFile = composeConfigFile
         self.mounts = mounts
     }
 
@@ -222,6 +226,66 @@ public struct DockerContainer: Identifiable, Equatable, Sendable {
             }
         }
         return ports
+    }
+}
+
+// MARK: - Compose project naming
+
+/// Compose defaults a project's name to the folder holding the compose file,
+/// so every repo with a `docker/` folder collides on "docker" — and colliding
+/// projects can clobber each other at the compose level. This advises an
+/// explicit top-level `name:` for compose files that lack one.
+public enum ComposeNameAdvisor {
+    /// Folder names that describe the setup, not the project.
+    public static let genericDirNames: Set<String> = [
+        "docker", "compose", "deploy", "deployment", "infra", "infrastructure",
+        "ops", "devops", "config", "src", "setup", "stack", "containers",
+        "services", "env", "environment", "local", "dev",
+    ]
+
+    /// Best explicit name for a project, from its working directory: the
+    /// nearest path component that isn't just tooling vocabulary.
+    /// "/Users/x/irems-sg/docker" → "irems-sg".
+    public static func suggestedName(forWorkingDir dir: String) -> String? {
+        let components = dir.split(separator: "/").map(String.init)
+        for component in components.reversed() {
+            let candidate = sanitize(component)
+            if !candidate.isEmpty, !genericDirNames.contains(candidate) {
+                return candidate
+            }
+        }
+        return components.reversed().lazy.map(sanitize).first { !$0.isEmpty }
+    }
+
+    /// Compose project names must match [a-z0-9][a-z0-9_-]*.
+    public static func sanitize(_ text: String) -> String {
+        var result = ""
+        for character in text.lowercased() {
+            if (character.isLetter && character.isASCII) || character.isNumber
+                || character == "-" || character == "_" {
+                result.append(character)
+            } else {
+                result.append("-")
+            }
+        }
+        while let first = result.first, !(first.isLetter || first.isNumber) {
+            result.removeFirst()
+        }
+        while result.contains("--") {
+            result = result.replacingOccurrences(of: "--", with: "-")
+        }
+        return result
+    }
+
+    /// Whether the YAML already sets a top-level `name:`.
+    public static func declaresName(_ yaml: String) -> Bool {
+        yaml.split(separator: "\n", omittingEmptySubsequences: false)
+            .contains { $0.hasPrefix("name:") }
+    }
+
+    /// Prepend the name key — position of top-level YAML keys is free.
+    public static func insertingName(_ name: String, into yaml: String) -> String {
+        "name: \(name)\n\n" + yaml
     }
 }
 
@@ -364,6 +428,8 @@ public struct ContainerGroup: Identifiable, Equatable, Sendable {
     public var isFullyRunning: Bool { runningCount == containers.count && !containers.isEmpty }
     /// The compose project directory, when docker recorded one.
     public var workingDir: String? { containers.compactMap(\.composeWorkingDir).first }
+    /// The project's primary compose file, when docker recorded one.
+    public var configFile: String? { containers.compactMap(\.composeConfigFile).first }
 
     /// Group containers by compose project AND compose working directory —
     /// docker's project label alone is ambiguous (see `qualifier`). Groups
