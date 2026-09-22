@@ -6,6 +6,22 @@ cd "$(dirname "$0")"
 APP_NAME="Colibar"
 APP_BUNDLE="$APP_NAME.app"
 
+# The macOS 27 SDK turned SwiftUI property wrappers (@State etc.) into
+# compiler macros whose plugin (SwiftUIMacros) ships only with full Xcode —
+# Command Line Tools alone can no longer compile SwiftUI against it. When
+# that plugin is missing, pin the newest pre-27 SDK still installed.
+CLT="/Library/Developer/CommandLineTools"
+if [ -z "${SDKROOT:-}" ] && [ -d "$CLT/SDKs" ] \
+   && [ ! -f "$CLT/usr/lib/swift/host/plugins/libSwiftUIMacros.dylib" ]; then
+  for sdk in "$CLT/SDKs/MacOSX26.5.sdk" "$CLT/SDKs/MacOSX26.sdk"; do
+    if [ -d "$sdk" ]; then
+      export SDKROOT="$sdk"
+      echo "==> pinning $(basename "$sdk") (CLT lacks the SwiftUI macros plugin for newer SDKs)"
+      break
+    fi
+  done
+fi
+
 echo "==> swift build -c release"
 swift build -c release --product "$APP_NAME"
 
