@@ -69,13 +69,19 @@ struct GroupCard: View {
             if isBusy {
                 ProgressView()
                     .controlSize(.small)
-            } else if group.runningCount < group.containers.count {
-                RowActionButton(systemImage: "play.fill", help: "Start all in \(group.title)") {
-                    appState.startGroup(group)
-                }
             } else {
-                RowActionButton(systemImage: "stop.fill", help: "Stop all in \(group.title)") {
-                    appState.stopGroup(group)
+                // Partially running groups (e.g. 10/12) show BOTH: play
+                // starts the stopped ones, stop stops the running ones —
+                // an either/or button left one direction unreachable.
+                if group.runningCount < group.containers.count {
+                    RowActionButton(systemImage: "play.fill", help: "Start all in \(group.title)") {
+                        appState.startGroup(group)
+                    }
+                }
+                if group.runningCount > 0 {
+                    RowActionButton(systemImage: "stop.fill", help: "Stop all in \(group.title)") {
+                        appState.stopGroup(group)
+                    }
                 }
             }
         }
