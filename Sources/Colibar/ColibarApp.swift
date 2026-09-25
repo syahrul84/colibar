@@ -17,6 +17,7 @@ struct ColibarApp: App {
             MenuBarLabel(summary: appState.menuBarSummary)
         }
         .menuBarExtraStyle(.window)
+        .windowResizability(.contentSize)
 
         Settings {
             SettingsRootView()

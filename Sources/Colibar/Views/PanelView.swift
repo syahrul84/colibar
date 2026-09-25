@@ -33,39 +33,80 @@ struct MeasuredScroll<Content: View>: View {
     }
 }
 
-/// Keeps the panel glued to the menu bar. MenuBarExtra reuses its window
-/// across opens, and when the content height changes (our measured scroll
-/// area, collapsing cards, the Attention card) recent macOS anchors the
-/// BOTTOM edge — every net shrink walks the top edge down, leaving a
-/// widening gap under the bar that persists into the next open. This view
-/// re-pins the window's top to the menu bar whenever geometry updates.
-private struct PanelWindowPinner: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView { PinView() }
+/// Height of the whole panel content, measured from inside SwiftUI.
+private struct PanelHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
 
-    func updateNSView(_ nsView: NSView, context: Context) {
-        (nsView as? PinView)?.scheduleRepin()
+/// Makes the menu bar window exactly as tall as the panel content.
+/// On macOS 26.7 the MenuBarExtra window can stay taller than its content
+/// (the content then floats inside an empty translucent box). The top edge
+/// macOS picks is always right, so only the height is corrected, keeping
+/// the current top.
+private struct PanelWindowSizer: NSViewRepresentable {
+    let contentHeight: CGFloat
+
+    func makeNSView(context: Context) -> SizerView { SizerView() }
+
+    func updateNSView(_ view: SizerView, context: Context) {
+        view.fit(to: contentHeight)
     }
 
-    final class PinView: NSView {
+    final class SizerView: NSView {
+        private var targetHeight: CGFloat = 0
+        private weak var observedWindow: NSWindow?
+
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            scheduleRepin()
+            guard window !== observedWindow else { return }
+            if let old = observedWindow {
+                NotificationCenter.default.removeObserver(self, name: nil, object: old)
+            }
+            observedWindow = window
+            if let window {
+                // The window is reused across opens; re-fit each time it shows.
+                NotificationCenter.default.addObserver(
+                    self, selector: #selector(windowShown),
+                    name: NSWindow.didBecomeKeyNotification, object: window
+                )
+            }
+            scheduleFit(reason: "attach")
         }
 
-        func scheduleRepin() {
-            // After the current layout pass, so the new height is applied.
-            DispatchQueue.main.async { [weak self] in self?.repin() }
+        @objc private func windowShown(_ note: Notification) {
+            scheduleFit(reason: "open")
         }
 
-        private func repin() {
-            guard let window, let screen = window.screen ?? NSScreen.main else { return }
-            let top = screen.visibleFrame.maxY // just under the menu bar
+        func fit(to height: CGFloat) {
+            guard height > 0, abs(height - targetHeight) > 0.5 else { return }
+            targetHeight = height
+            scheduleFit(reason: "content")
+        }
+
+        private func scheduleFit(reason: String) {
+            // After the current layout pass so the frame we read is settled.
+            DispatchQueue.main.async { [weak self] in self?.applyFit(reason: reason) }
+        }
+
+        private func applyFit(reason: String) {
+            guard let window, targetHeight > 0 else { return }
             let frame = window.frame
-            guard abs(frame.maxY - top) > 1 else { return }
+            let contentViewHeight = window.contentView?.frame.height ?? frame.height
+            let chrome = frame.height - contentViewHeight
+            let wanted = (targetHeight + chrome).rounded()
+            guard abs(frame.height - wanted) > 1 else { return }
+            appLog.notice("panel fit (\(reason, privacy: .public)): window \(Int(frame.height))pt -> \(Int(wanted))pt, top \(Int(frame.maxY))")
             window.setFrame(
-                NSRect(x: frame.minX, y: top - frame.height, width: frame.width, height: frame.height),
+                NSRect(x: frame.minX, y: frame.maxY - wanted, width: frame.width, height: wanted),
                 display: true
             )
+        }
+
+        deinit {
+            NotificationCenter.default.removeObserver(self)
         }
     }
 }
@@ -76,6 +117,7 @@ struct PanelView: View {
     /// The supported way to open the Settings scene on macOS 14+ — the old
     /// showSettingsWindow: selector is no longer honored.
     @Environment(\.openSettings) private var openSettings
+    @State private var panelHeight: CGFloat = 0
 
     private func openSettingsWindow() {
         revealSettingsWindow(openSettings)
@@ -88,7 +130,14 @@ struct PanelView: View {
             content
         }
         .frame(width: 340)
-        .background(PanelWindowPinner())
+        .fixedSize(horizontal: false, vertical: true)
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(key: PanelHeightKey.self, value: proxy.size.height)
+            }
+        )
+        .onPreferenceChange(PanelHeightKey.self) { panelHeight = $0 }
+        .background(PanelWindowSizer(contentHeight: panelHeight))
         .onAppear { appState.panelDidOpen() }
         .onDisappear { appState.panelDidClose() }
     }
