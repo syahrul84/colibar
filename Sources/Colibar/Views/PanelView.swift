@@ -33,6 +33,43 @@ struct MeasuredScroll<Content: View>: View {
     }
 }
 
+/// Keeps the panel glued to the menu bar. MenuBarExtra reuses its window
+/// across opens, and when the content height changes (our measured scroll
+/// area, collapsing cards, the Attention card) recent macOS anchors the
+/// BOTTOM edge — every net shrink walks the top edge down, leaving a
+/// widening gap under the bar that persists into the next open. This view
+/// re-pins the window's top to the menu bar whenever geometry updates.
+private struct PanelWindowPinner: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { PinView() }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        (nsView as? PinView)?.scheduleRepin()
+    }
+
+    final class PinView: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            scheduleRepin()
+        }
+
+        func scheduleRepin() {
+            // After the current layout pass, so the new height is applied.
+            DispatchQueue.main.async { [weak self] in self?.repin() }
+        }
+
+        private func repin() {
+            guard let window, let screen = window.screen ?? NSScreen.main else { return }
+            let top = screen.visibleFrame.maxY // just under the menu bar
+            let frame = window.frame
+            guard abs(frame.maxY - top) > 1 else { return }
+            window.setFrame(
+                NSRect(x: frame.minX, y: top - frame.height, width: frame.width, height: frame.height),
+                display: true
+            )
+        }
+    }
+}
+
 /// Root of the menu bar window: header, instances, containers, footer.
 struct PanelView: View {
     @EnvironmentObject private var appState: AppState
@@ -51,6 +88,7 @@ struct PanelView: View {
             content
         }
         .frame(width: 340)
+        .background(PanelWindowPinner())
         .onAppear { appState.panelDidOpen() }
         .onDisappear { appState.panelDidClose() }
     }
