@@ -326,6 +326,42 @@ public enum AppUpdate {
     }
 }
 
+// MARK: - Docker volumes
+
+/// A docker volume no container uses — a candidate for freeing VM disk.
+public struct DockerVolume: Identifiable, Equatable, Sendable {
+    public let name: String
+    public let sizeBytes: Int64
+    /// docker's own rendering, e.g. "85.6GB".
+    public let sizeLabel: String
+    /// Compose project that created it, when labelled.
+    public let project: String?
+
+    public var id: String { name }
+
+    /// Unnamed volumes are 64-hex-character IDs (a Dockerfile VOLUME, or a
+    /// compose volume without a name).
+    public var isUnnamed: Bool {
+        name.count == 64 && name.allSatisfy(\.isHexDigit)
+    }
+
+    /// "cargo-target · project-index-mcp", "unnamed volume 009a049d…".
+    public var displayName: String {
+        if isUnnamed { return "unnamed volume \(name.prefix(8))…" }
+        if let project, name.hasPrefix(project + "_") {
+            return "\(name.dropFirst(project.count + 1)) · \(project)"
+        }
+        return name
+    }
+
+    public init(name: String, sizeBytes: Int64, sizeLabel: String, project: String?) {
+        self.name = name
+        self.sizeBytes = sizeBytes
+        self.sizeLabel = sizeLabel
+        self.project = project
+    }
+}
+
 // MARK: - Byte sizes
 
 public enum ByteSize {

@@ -909,6 +909,65 @@ final class AppState: ObservableObject {
             guard let self else { return }
             if !usage.isEmpty { self.diskUsage = usage }
             self.diskTask = nil
+            self.refreshUnusedVolumes()
+        }
+    }
+
+    /// Biggest volumes no container uses — listed under the disk warning so
+    /// space image pruning can't reach is one (confirmed) click away. Only
+    /// fetched while the warning shows: measuring volumes is slow.
+    @Published var unusedVolumes: [DockerVolume] = []
+    @Published var removingVolumes: Set<String> = []
+    private var volumesTask: Task<Void, Never>?
+    /// Small leftovers aren't worth a row; the warning is about real space.
+    static let volumeListMinimumBytes: Int64 = 100 << 20
+
+    private func refreshUnusedVolumes() {
+        guard !diskWarnings.isEmpty else {
+            unusedVolumes = []
+            return
+        }
+        guard volumesTask == nil else { return }
+        let service = self.service
+        volumesTask = Task { [weak self] in
+            let volumes = await Task.detached(priority: .utility) {
+                (try? service.listUnusedVolumes()) ?? []
+            }.value
+            guard let self else { return }
+            self.unusedVolumes = Array(
+                volumes.filter { $0.sizeBytes >= Self.volumeListMinimumBytes }.prefix(5)
+            )
+            self.volumesTask = nil
+        }
+    }
+
+    func removeVolume(_ volume: DockerVolume) {
+        guard !removingVolumes.contains(volume.name) else { return }
+        removingVolumes.insert(volume.name)
+        let service = self.service
+        Task { [weak self] in
+            var failure: String?
+            do {
+                try await Task.detached(priority: .userInitiated) {
+                    try service.removeVolume(volume.name)
+                }.value
+            } catch {
+                failure = error.localizedDescription
+            }
+            guard let self else { return }
+            self.removingVolumes.remove(volume.name)
+            if let failure {
+                self.lastError = failure
+            } else {
+                self.unusedVolumes.removeAll { $0.name == volume.name }
+                self.statusMessage = "Deleted \(volume.displayName) — freed \(volume.sizeLabel)"
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(10))
+                    self?.statusMessage = nil
+                }
+            }
+            self.lastDiskCheck = .distantPast // re-measure the disk right away
+            self.refreshNow()
         }
     }
 

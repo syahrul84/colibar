@@ -50,7 +50,7 @@ private struct DiskWarningRow: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
                     .padding(.top, 2)
-                Text("VM disk \(warning.percent)% full (\(warning.instance)) — unused images and build cache pile up quietly.")
+                Text("VM disk \(warning.percent)% full (\(warning.instance)) — unused images, build cache and volumes pile up quietly.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -59,7 +59,7 @@ private struct DiskWarningRow: View {
                     ProgressView()
                         .controlSize(.small)
                 } else if !confirming {
-                    Button("Reclaim Space…") { confirming = true }
+                    Button("Prune Images…") { confirming = true }
                         .controlSize(.small)
                 }
             }
@@ -80,9 +80,76 @@ private struct DiskWarningRow: View {
                     .keyboardShortcut(.defaultAction)
                 }
             }
+            if !appState.unusedVolumes.isEmpty {
+                Text("Biggest volumes no container uses:")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 2)
+                ForEach(appState.unusedVolumes) { volume in
+                    UnusedVolumeRow(volume: volume)
+                }
+            }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 2)
+    }
+}
+
+/// One unused volume under the disk warning. Deleting is permanent, so the
+/// trash button asks first; docker itself refuses if a container uses it.
+private struct UnusedVolumeRow: View {
+    @EnvironmentObject private var appState: AppState
+    let volume: DockerVolume
+    @State private var confirming = false
+
+    private var isRemoving: Bool { appState.removingVolumes.contains(volume.name) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Image(systemName: "cylinder")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(volume.displayName)
+                    .font(.caption)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(volume.name)
+                Spacer()
+                Text(volume.sizeLabel)
+                    .font(.caption.weight(.medium))
+                    .monospacedDigit()
+                if isRemoving {
+                    ProgressView()
+                        .controlSize(.small)
+                } else if !confirming {
+                    Button {
+                        confirming = true
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Delete this volume")
+                }
+            }
+            if confirming, !isRemoving {
+                HStack(spacing: 8) {
+                    Text("Delete permanently? Anything stored in it is gone.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Cancel") { confirming = false }
+                        .controlSize(.small)
+                    Button("Delete", role: .destructive) {
+                        confirming = false
+                        appState.removeVolume(volume)
+                    }
+                    .controlSize(.small)
+                }
+            }
+        }
+        .padding(.leading, 20)
     }
 }
 

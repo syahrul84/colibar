@@ -313,6 +313,19 @@ suite("compose name advisor") {
     expectEqual(fileService.composeFileDeclaresName(at: scratch.path), nil, "unreadable file reports nil")
 }
 
+suite("unused volume parsing") {
+    // Shape of `docker system df -v --format '{{json .Volumes}}'`.
+    let json = #"[{"Availability":"N/A","Driver":"local","Labels":"com.docker.compose.project=project-index-mcp,com.docker.compose.volume=cargo-target","Links":"0","Name":"project-index-mcp_cargo-target","Size":"85.6GB"},{"Labels":"","Links":"0","Name":"009a049db17b998f1a5d4c1b201968b797186518bcf61674c2e9dbaa6b173bfa","Size":"4.011GB"},{"Labels":"com.docker.compose.project=goodbite","Links":"1","Name":"goodbite_postgres18-data","Size":"1.01GB"},{"Labels":"","Links":"0","Name":"cm-bench-sg","Size":"144.9MB"}]"#
+    let volumes = ColimaService.parseUnusedVolumes(json)
+    expectEqual(volumes.map(\.name), ["project-index-mcp_cargo-target", "009a049db17b998f1a5d4c1b201968b797186518bcf61674c2e9dbaa6b173bfa", "cm-bench-sg"], "in-use volume dropped, biggest first")
+    expectEqual(volumes.first?.displayName, "cargo-target · project-index-mcp", "compose prefix moved after the name")
+    expectEqual(volumes.first?.sizeLabel, "85.6GB", "docker's size label kept")
+    expect(volumes[1].isUnnamed, "64-hex name is an unnamed volume")
+    expectEqual(volumes[1].displayName, "unnamed volume 009a049d…", "unnamed volume shortened")
+    expectEqual(volumes[2].displayName, "cm-bench-sg", "plain named volume as-is")
+    expectEqual(ColimaService.parseUnusedVolumes("not json"), [], "garbage tolerated")
+}
+
 suite("brew outdated parsing") {
     let json = #"{"formulae":[{"name":"docker","installed_versions":["29.6.0"],"current_version":"29.7.1","pinned":false},{"name":"python@3.12","installed_versions":["3.12.1"],"current_version":"3.12.8","pinned":false},{"name":"docker-compose","installed_versions":["5.1.2","5.1.4"],"current_version":"5.2.0","pinned":false}],"casks":[]}"#
     let items = ColimaService.parseBrewOutdated(json, interesting: ColimaService.toolchainFormulas)

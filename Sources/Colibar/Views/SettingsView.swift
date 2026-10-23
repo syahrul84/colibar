@@ -297,7 +297,7 @@ struct DisplaySettingsTab: View {
                     ForEach(projectGroups) { group in
                         ProjectSettingsRow(group: group, confirmingID: $confirmingTeardownID)
                     }
-                    Text("Unchecking hides a project from the list. The trash button deletes its containers and images — source files and data volumes are kept, and the project comes back with docker compose up.")
+                    Text("Unchecking hides a project from the list. The trash button deletes its containers, images and unnamed volumes — source files and named data volumes are kept, and the project comes back with docker compose up.")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -342,7 +342,7 @@ private struct ProjectSettingsRow: View {
             }
             if confirmingID == group.id, !isBusy {
                 HStack(spacing: 8) {
-                    Text("Delete \(group.title)'s containers and images? Files and data volumes are kept.")
+                    Text("Delete \(group.title)'s containers, images and unnamed volumes? Files and named data volumes are kept.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

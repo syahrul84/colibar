@@ -412,7 +412,10 @@ public struct ColimaService: Sendable {
         guard !ids.isEmpty else { return "Nothing to remove" }
         let result: ShellResult
         do {
-            result = try shell.run("docker", ["rm", "-f"] + ids, timeout: 180)
+            // -v also removes the containers' UNNAMED volumes. Without it they
+            // pile up as orphans no container can ever reattach (found 41 of
+            // them, 22 GB, on 2026-10-23). Named volumes are never removed.
+            result = try shell.run("docker", ["rm", "-f", "-v"] + ids, timeout: 180)
         } catch ShellError.binaryNotFound {
             throw ColimaServiceError.dockerNotInstalled
         }
@@ -567,6 +570,70 @@ public struct ColimaService: Sendable {
             }
         }
         return nil
+    }
+
+    // MARK: - Unused volumes
+
+    /// Volumes no container uses, biggest first. Image pruning can never
+    /// reach these, and they are often what fills the VM disk (a single
+    /// Rust build cache was 85.6 GB). `docker system df -v` measures every
+    /// volume, so it is slow — only call it when the disk is already filling.
+    public func listUnusedVolumes() throws -> [DockerVolume] {
+        let result: ShellResult
+        do {
+            result = try shell.run(
+                "docker", ["system", "df", "-v", "--format", "{{json .Volumes}}"], timeout: 180
+            )
+        } catch ShellError.binaryNotFound {
+            throw ColimaServiceError.dockerNotInstalled
+        }
+        if result.timedOut { throw ColimaServiceError.commandTimedOut(command: "docker system df") }
+        guard result.succeeded else {
+            throw ColimaServiceError.commandFailed(command: "docker system df", message: pickMessage(result))
+        }
+        return Self.parseUnusedVolumes(result.stdout)
+    }
+
+    private struct VolumeJSON: Decodable {
+        let Name: String
+        let Links: String?
+        let Size: String?
+        let Labels: String?
+    }
+
+    /// Parses the `.Volumes` array of `docker system df -v`; keeps only
+    /// volumes with zero links (no container, running or stopped).
+    public static func parseUnusedVolumes(_ json: String) -> [DockerVolume] {
+        guard
+            let data = json.trimmingCharacters(in: .whitespacesAndNewlines).data(using: .utf8),
+            let volumes = try? JSONDecoder().decode([VolumeJSON].self, from: data)
+        else { return [] }
+        return volumes
+            .filter { ($0.Links ?? "") == "0" }
+            .map { volume in
+                let size = volume.Size ?? "0B"
+                return DockerVolume(
+                    name: volume.Name,
+                    sizeBytes: ByteSize.parse(size) ?? 0,
+                    sizeLabel: size,
+                    project: DockerContainer.parseLabels(volume.Labels ?? "")["com.docker.compose.project"]
+                )
+            }
+            .sorted { $0.sizeBytes > $1.sizeBytes }
+    }
+
+    /// Permanently delete one volume. Docker refuses if a container still
+    /// uses it, so this can't pull data out from under a project.
+    public func removeVolume(_ name: String) throws {
+        let result: ShellResult
+        do {
+            result = try shell.run("docker", ["volume", "rm", name], timeout: 120)
+        } catch ShellError.binaryNotFound {
+            throw ColimaServiceError.dockerNotInstalled
+        }
+        guard result.succeeded else {
+            throw ColimaServiceError.commandFailed(command: "docker volume rm", message: pickMessage(result))
+        }
     }
 
     // MARK: - Disk cleanup
