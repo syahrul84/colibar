@@ -27,10 +27,9 @@ No Docker Desktop. No Electron. No third-party dependencies. One ~1 MB native bi
 **Requirements:** macOS 14+, [Colima](https://github.com/abiosoft/colima) and the docker CLI (`brew install colima docker`).
 
 1. Download the latest `Colibar-vX.Y.Z.zip` from [Releases](https://github.com/syahrul84/colibar/releases), unzip, and drag `Colibar.app` into `/Applications`.
-2. First launch: **right-click → Open** (the app is not notarized yet, so macOS warns once). Alternatively: `xattr -d com.apple.quarantine /Applications/Colibar.app`.
-3. Click the hexagon in your menu bar. That's it — Colibar finds your Colima and containers automatically (and tells you the `brew install` command if they're missing).
+2. Click the hexagon in your menu bar. That's it — Colibar finds your Colima and containers automatically (and tells you the `brew install` command if they're missing).
 
-Colibar checks GitHub Releases for updates (daily, or on demand from Settings) and can install them in place.
+Colibar is signed with a Developer ID and notarized by Apple, so it opens like any other app. It checks GitHub Releases for updates (daily, or on demand from Settings) and can install them in place.
 
 ## The `.test` domains, in 30 seconds
 
@@ -46,6 +45,8 @@ git clone https://github.com/syahrul84/colibar.git && cd colibar
 ./build-app.sh run       # dev loop: build + install + relaunch
 swift run colibar-tests  # parser test suite (95 assertions, no Xcode needed)
 ```
+
+Release zips come from `./build-app.sh package`, which signs with the Developer ID certificate, notarizes with Apple and staples the ticket ([scripts/notarize.sh](scripts/notarize.sh) lists the one-time setup).
 
 SwiftPM only — no Xcode project, no dependencies. The core layer (`ColibarCore`) holds all CLI parsing and never touches UI; if a future Colima release changes its output, [one file](Sources/ColibarCore/ColimaService.swift) needs editing and the tests will say so.
 

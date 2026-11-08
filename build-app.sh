@@ -72,7 +72,8 @@ fi
 if [ "${1:-}" = "package" ]; then
   VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP_BUNDLE/Contents/Info.plist")
   ZIP="$APP_NAME-v$VERSION.zip"
-  rm -f "$ZIP"
-  ditto -c -k --keepParent "$APP_BUNDLE" "$ZIP"
+  # Developer ID signature + Apple notarization, so the download opens
+  # without the "unidentified developer" warning. See scripts/notarize.sh.
+  scripts/notarize.sh "$APP_BUNDLE" "$ZIP" Resources/Colibar.entitlements
   echo "==> packaged: $PWD/$ZIP (attach to the v$VERSION GitHub release)"
 fi
